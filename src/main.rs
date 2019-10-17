@@ -1,0 +1,282 @@
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::hash::{Hash, Hasher};
+use std::io::{prelude::*, BufReader};
+use std::iter::FromIterator;
+
+const ROLLING_LINE_SIZE: usize = 6;
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
+fn file_signatures(filename: &String) -> Vec<u64> {
+    let mut rc: Vec<u64> = Vec::with_capacity(2048);
+
+    let file = File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let l = line.expect(&format!("Invalid unicode in file {:?}", filename));
+        rc.push(calculate_hash(&l.trim()));
+    }
+
+    rc
+}
+
+fn rolling_hashes(
+    collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
+    filename: &String,
+    file_signatures: &Vec<u64>,
+) -> () {
+    if file_signatures.len() > ROLLING_LINE_SIZE {
+        let num_lines = file_signatures.len() - ROLLING_LINE_SIZE;
+        for i in 0..num_lines {
+            let mut s = DefaultHasher::new();
+            for n in i..(i + ROLLING_LINE_SIZE) {
+                file_signatures[n].hash(&mut s);
+            }
+            let digest = s.finish();
+
+            match collision_hash.get_mut(&digest) {
+                Some(existing) => existing.push((filename.clone(), i)),
+                None => {
+                    let mut entry: Vec<(String, usize)> = Vec::new();
+                    entry.push((filename.clone(), i));
+                    collision_hash.insert(digest, entry);
+                }
+            }
+        }
+    }
+}
+
+fn process_file(
+    collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
+    file_hashes: &mut HashMap<String, Vec<u64>>,
+    filename: &String,
+) -> () {
+    file_hashes.insert(filename.clone(), file_signatures(filename));
+    rolling_hashes(
+        collision_hash,
+        filename,
+        file_hashes
+            .get(filename)
+            .expect("We just inserted filename"),
+    );
+}
+
+#[derive(Debug)]
+struct Collision {
+    key: u64,
+    num_lines: usize,
+    files: Vec<(String, usize)>,
+}
+
+fn walk_collision(
+    file_hashes: &mut HashMap<String, Vec<u64>>,
+    left_file: &String,
+    left_start: usize,
+    right_file: &String,
+    right_start: usize,
+) -> Option<Collision> {
+    let l_h = file_hashes
+        .get(left_file)
+        .expect("Expect file in file_hashes");
+    let r_h = file_hashes
+        .get(right_file)
+        .expect("Expect file in file_hashes");
+
+    if left_file == right_file && left_start == right_start {
+        return None;
+    }
+
+    let mut offset: usize = 0;
+    let l_num = l_h.len();
+    let r_num = r_h.len();
+    let mut s = DefaultHasher::new();
+
+    loop {
+        let l_index = left_start + offset;
+        let r_index = right_start + offset;
+
+        if l_index < l_num && r_index < r_num {
+            if l_h[l_index] == r_h[r_index] {
+                l_h[l_index].hash(&mut s);
+                offset += 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    if offset > ROLLING_LINE_SIZE {
+        let mut files: Vec<(String, usize)> = Vec::new();
+        files.push((left_file.clone(), left_start));
+        files.push((right_file.clone(), right_start));
+        return Some(Collision {
+            key: s.finish(),
+            num_lines: offset,
+            files,
+        });
+    }
+
+    None
+}
+
+fn find_collisions(
+    collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
+    file_hashes: &mut HashMap<String, Vec<u64>>,
+) -> () {
+    fn chunk_sig(coll: &Collision) -> u64 {
+        let mut s = DefaultHasher::new();
+
+        for i in &coll.files {
+            let file_n = &i.0;
+            let starts = i.1;
+            let end = starts + 1 + coll.num_lines;
+            let rep = format!("{}{}", end, file_n);
+            rep.hash(&mut s);
+        }
+
+        s.finish()
+    }
+
+    fn print_dup_text(filename: &String, start: usize, count: usize) {
+        let file =
+            File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
+        let reader = BufReader::new(file);
+        let mut line_number = 0;
+        let end = start + count;
+
+        for line in reader.lines() {
+            let l = line.expect(&format!("Invalid unicode in file {:?}", filename));
+
+            if line_number >= start && line_number < end {
+                println!("{}", l);
+            }
+
+            if line_number > end {
+                break;
+            }
+
+            line_number += 1;
+        }
+    }
+
+    fn print_report(printable_results: &mut Vec<&Collision>) {
+        printable_results.sort_by(|a, b| {
+            if a.num_lines == b.num_lines {
+                if a.files[0].1 == b.files[0].1 {
+                    a.files[0].0.cmp(&b.files[0].0)
+                } else {
+                    a.files[0].1.cmp(&b.files[0].1)
+                }
+            } else {
+                a.num_lines.cmp(&b.num_lines)
+            }
+        });
+        let mut num_lines = 0;
+        let total_num = printable_results.len();
+
+        for p in printable_results {
+            println!(
+                "********************************************************************************"
+            );
+            println!(
+                "Found {} copy & pasted lines in the following files:",
+                p.num_lines
+            );
+
+            num_lines += p.num_lines * p.files.len();
+
+            for spec_file in &p.files {
+                let filename = &spec_file.0;
+                let start_line = spec_file.1;
+                let end_line = start_line + 1 + p.num_lines;
+                println!(
+                    "Between lines {} and {} in {}",
+                    start_line + 1,
+                    end_line,
+                    filename
+                );
+            }
+
+            print_dup_text(&p.files[0].0, p.files[0].1, p.num_lines)
+        }
+
+        println!(
+            "Found {} duplicate lines in {} chunks",
+            num_lines, total_num
+        )
+    }
+
+    let mut results_hash: HashMap<u64, Collision> = HashMap::new();
+
+    for collisions in collision_hash.values_mut().filter(|a| a.len() > 1) {
+        for l_idx in 0..(collisions.len() - 1) {
+            for r_idx in l_idx..collisions.len() {
+                let (l_file, l_start) = &collisions[l_idx];
+                let (r_file, r_start) = &collisions[r_idx];
+
+                let max_collision =
+                    walk_collision(file_hashes, &l_file, *l_start, &r_file, *r_start);
+
+                if let Some(mut coll) = max_collision {
+                    match results_hash.get_mut(&coll.key) {
+                        Some(existing) => existing.files.append(&mut coll.files),
+                        None => {
+                            results_hash.insert(coll.key, coll);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
+    final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
+
+    let mut printable_results: Vec<&Collision> = Vec::new();
+    let mut chunk_processed: HashMap<u64, bool> = HashMap::new();
+
+    for ea in final_report {
+        // Remove duplicates from each by sorting and then dedup
+        ea.files.sort_by(|a, b| {
+            if a.1 == b.1 {
+                a.0.cmp(&b.0) // Number match, order by file name
+            } else {
+                a.1.cmp(&b.1) // Numbers don't match, order by number
+            }
+        });
+        ea.files.dedup();
+
+        let cs = chunk_sig(ea);
+        if chunk_processed.get(&cs).is_none() {
+            chunk_processed.insert(cs, true);
+            printable_results.push(ea);
+        }
+    }
+
+    print_report(&mut printable_results);
+}
+
+fn main() {
+    let mut args: Vec<String> = env::args().collect();
+    let mut collision_hashes: HashMap<u64, Vec<(String, usize)>> = HashMap::new();
+    let mut file_hashes: HashMap<String, Vec<u64>> = HashMap::new();
+
+    // Remove the executable itself.
+    args.remove(0);
+
+    for filename in &args {
+        process_file(&mut collision_hashes, &mut file_hashes, filename);
+    }
+
+    find_collisions(&mut collision_hashes, &mut file_hashes);
+}

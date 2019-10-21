@@ -111,7 +111,11 @@ fn walk_collision(
         .get(right_file)
         .expect("Expect file in file_hashes");
 
-    if left_file == right_file && left_start == right_start {
+    // If we have collisions where we overlap
+    if (left_file == right_file && left_start == right_start)
+        || (right_start >= left_start && right_start <= (left_start + min_lines))
+        || (left_start >= right_start && left_start <= (right_start + min_lines))
+    {
         return None;
     }
 
@@ -134,6 +138,15 @@ fn walk_collision(
         } else {
             break;
         }
+    }
+
+    // If after walking we overlap skip too
+    if left_file == right_file
+        && offset >= min_lines
+        && ((right_start >= left_start && right_start <= (left_start + offset))
+            || (left_start >= right_start && left_start <= (right_start + offset)))
+    {
+        return None;
     }
 
     if offset >= min_lines {

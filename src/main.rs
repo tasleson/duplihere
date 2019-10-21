@@ -51,6 +51,7 @@ fn rolling_hashes(
 ) -> () {
     if file_signatures.len() > min_lines {
         let num_lines = file_signatures.len() - min_lines;
+        let mut prev_hash: u64 = 0;
         for i in 0..num_lines {
             let mut s = DefaultHasher::new();
             for n in i..(i + min_lines) {
@@ -58,14 +59,18 @@ fn rolling_hashes(
             }
             let digest = s.finish();
 
-            match collision_hash.get_mut(&digest) {
-                Some(existing) => existing.push((filename.clone(), i)),
-                None => {
-                    let mut entry: Vec<(String, usize)> = Vec::new();
-                    entry.push((filename.clone(), i));
-                    collision_hash.insert(digest, entry);
+            if prev_hash != digest {
+                match collision_hash.get_mut(&digest) {
+                    Some(existing) => existing.push((filename.clone(), i)),
+                    None => {
+                        let mut entry: Vec<(String, usize)> = Vec::new();
+                        entry.push((filename.clone(), i));
+                        collision_hash.insert(digest, entry);
+                    }
                 }
             }
+
+            prev_hash = digest;
         }
     }
 }

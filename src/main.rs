@@ -1,3 +1,8 @@
+extern crate argparse_rs;
+
+use argparse_rs::{ArgParser, ArgType};
+use glob::glob;
+
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::env;
@@ -5,8 +10,6 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
 use std::iter::FromIterator;
-
-const ROLLING_LINE_SIZE: usize = 6;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -32,12 +35,13 @@ fn rolling_hashes(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     filename: &String,
     file_signatures: &Vec<u64>,
+    min_lines: usize,
 ) -> () {
-    if file_signatures.len() > ROLLING_LINE_SIZE {
-        let num_lines = file_signatures.len() - ROLLING_LINE_SIZE;
+    if file_signatures.len() > min_lines {
+        let num_lines = file_signatures.len() - min_lines;
         for i in 0..num_lines {
             let mut s = DefaultHasher::new();
-            for n in i..(i + ROLLING_LINE_SIZE) {
+            for n in i..(i + min_lines) {
                 file_signatures[n].hash(&mut s);
             }
             let digest = s.finish();
@@ -58,15 +62,19 @@ fn process_file(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     file_hashes: &mut HashMap<String, Vec<u64>>,
     filename: &String,
+    min_lines: usize,
 ) -> () {
-    file_hashes.insert(filename.clone(), file_signatures(filename));
-    rolling_hashes(
-        collision_hash,
-        filename,
-        file_hashes
-            .get(filename)
-            .expect("We just inserted filename"),
-    );
+    if !file_hashes.contains_key(filename) {
+        file_hashes.insert(filename.clone(), file_signatures(filename));
+        rolling_hashes(
+            collision_hash,
+            filename,
+            file_hashes
+                .get(filename)
+                .expect("We just inserted filename"),
+            min_lines,
+        );
+    }
 }
 
 #[derive(Debug)]
@@ -82,6 +90,7 @@ fn walk_collision(
     left_start: usize,
     right_file: &String,
     right_start: usize,
+    min_lines: usize,
 ) -> Option<Collision> {
     let l_h = file_hashes
         .get(left_file)
@@ -115,7 +124,7 @@ fn walk_collision(
         }
     }
 
-    if offset > ROLLING_LINE_SIZE {
+    if offset >= min_lines {
         let mut files: Vec<(String, usize)> = Vec::new();
         files.push((left_file.clone(), left_start));
         files.push((right_file.clone(), right_start));
@@ -132,6 +141,8 @@ fn walk_collision(
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     file_hashes: &mut HashMap<String, Vec<u64>>,
+    min_lines: usize,
+    print_text: bool,
 ) -> () {
     fn chunk_sig(coll: &Collision) -> u64 {
         let mut s = DefaultHasher::new();
@@ -169,7 +180,7 @@ fn find_collisions(
         }
     }
 
-    fn print_report(printable_results: &mut Vec<&Collision>) {
+    fn print_report(printable_results: &mut Vec<&Collision>, print_text: bool) {
         printable_results.sort_by(|a, b| {
             if a.num_lines == b.num_lines {
                 if a.files[0].1 == b.files[0].1 {
@@ -207,7 +218,9 @@ fn find_collisions(
                 );
             }
 
-            print_dup_text(&p.files[0].0, p.files[0].1, p.num_lines)
+            if print_text {
+                print_dup_text(&p.files[0].0, p.files[0].1, p.num_lines);
+            }
         }
 
         println!(
@@ -225,7 +238,7 @@ fn find_collisions(
                 let (r_file, r_start) = &collisions[r_idx];
 
                 let max_collision =
-                    walk_collision(file_hashes, &l_file, *l_start, &r_file, *r_start);
+                    walk_collision(file_hashes, &l_file, *l_start, &r_file, *r_start, min_lines);
 
                 if let Some(mut coll) = max_collision {
                     match results_hash.get_mut(&coll.key) {
@@ -263,20 +276,84 @@ fn find_collisions(
         }
     }
 
-    print_report(&mut printable_results);
+    print_report(&mut printable_results, print_text);
 }
 
 fn main() {
-    let mut args: Vec<String> = env::args().collect();
+    let mut parser = ArgParser::new("duplihere".into());
+
+    parser.add_opt(
+        "lines",
+        Some("6"),
+        'l',
+        false,
+        "Minimum number of duplicate lines, default 6",
+        ArgType::Option,
+    );
+    parser.add_opt(
+        "print",
+        Some("false"),
+        'p',
+        false,
+        "Print duplicate text",
+        ArgType::Flag,
+    );
+    parser.add_opt("files", None, 'f', true, "File pattern(s)", ArgType::List);
+
+    let args: Vec<String> = env::args().collect();
     let mut collision_hashes: HashMap<u64, Vec<(String, usize)>> = HashMap::new();
     let mut file_hashes: HashMap<String, Vec<u64>> = HashMap::new();
 
-    // Remove the executable itself.
-    args.remove(0);
+    let parsed = parser.parse(args.iter());
 
-    for filename in &args {
-        process_file(&mut collision_hashes, &mut file_hashes, filename);
+    match parsed {
+        Ok(p) => {
+            let num_lines: usize = p
+                .get::<String>("lines")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap_or(6);
+            if num_lines < 3 {
+                println!("Minimum number of lines is 3, {} supplied!", num_lines);
+                parser.help();
+                return;
+            }
+
+            let str_to_strings = |s: &str| {
+                Some(
+                    s.split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>(),
+                )
+            };
+
+            let print_txt = p.get::<bool>("print").unwrap_or(false);
+            let files = p.get_with("files", str_to_strings).unwrap();
+
+            for g in files {
+                for entry in glob(&g).expect("Bad glob patter") {
+                    for filename in &entry {
+                        let file_str_name = String::from(filename.to_str().unwrap());
+                        process_file(
+                            &mut collision_hashes,
+                            &mut file_hashes,
+                            &file_str_name,
+                            num_lines,
+                        );
+                    }
+                }
+            }
+
+            find_collisions(
+                &mut collision_hashes,
+                &mut file_hashes,
+                num_lines,
+                print_txt,
+            );
+        }
+        Err(e) => {
+            println!("{}!\n", e);
+            parser.help();
+        }
     }
-
-    find_collisions(&mut collision_hashes, &mut file_hashes);
 }

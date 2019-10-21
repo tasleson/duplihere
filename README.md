@@ -18,12 +18,27 @@ Developers are lazy, they don't change things :-)
 
 ### How to use
 
-At the moment you need to feed in the source files to be compared on the
-commandline.  To process a directory with a number of sources do something
-like ...
-
 ```bash
-$ find . -type f -name "*.[h|c]" -print0 | xargs -r0 duplihere
+Usage:	duplihere [--help ] [--lines LINES] [--files FILES...] [--print ] 
+Options:
+
+--help (-h)	Required: false	Type: Flag
+	Show this help message
+
+--lines (-l)	Required: false	Type: Option
+	Minimum number of duplicate lines, default 6
+
+--files (-f)	Required: true	Type: List
+	File pattern(s)
+
+--print (-p)	Required: false	Type: Flag
+	Print duplicate text
+
+```
+
+An example ...
+```bash
+$ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' '/tmp/*.py'
 ```
 
 

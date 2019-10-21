@@ -191,22 +191,35 @@ fn find_collisions(
     fn print_dup_text(filename: &String, start: usize, count: usize) {
         let file =
             File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
         let mut line_number = 0;
         let end = start + count;
 
-        for line in reader.lines() {
-            let l = line.expect(&format!("Invalid unicode in file {:?}", filename));
+        loop {
+            let mut buf: Vec<u8> = vec![];
 
-            if line_number >= start && line_number < end {
-                println!("{}", l);
+            match reader.read_until(0xA, &mut buf) {
+                Ok(num_bytes) => {
+                    if num_bytes == 0 {
+                        break;
+                    } else {
+                        if line_number >= start && line_number < end {
+                            let l = String::from_utf8_lossy(&buf);
+                            print!("{}", l);
+                        }
+                    }
+
+                    if line_number > end {
+                        break;
+                    }
+
+                    line_number += 1;
+                }
+                Err(e) => {
+                    println!("WARNING: Error processing file {} reason {}", filename, e);
+                    break;
+                }
             }
-
-            if line_number > end {
-                break;
-            }
-
-            line_number += 1;
         }
     }
 

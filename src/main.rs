@@ -21,14 +21,26 @@ fn file_signatures(filename: &String) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::with_capacity(2048);
 
     let file = File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
-    for line in reader.lines() {
-        let l = line.expect(&format!("Invalid unicode in file {:?}", filename));
-        rc.push(calculate_hash(&l.trim()));
+    loop {
+        let mut buf: Vec<u8> = vec![];
+        match reader.read_until(0xA, &mut buf) {
+            Ok(num_bytes) => {
+                if num_bytes == 0 {
+                    return rc;
+                } else {
+                    let l = String::from_utf8_lossy(&buf);
+                    rc.push(calculate_hash(&l.trim()));
+                    buf.truncate(0);
+                }
+            }
+            Err(e) => {
+                println!("WARNING: Error processing file {} reason {}", filename, e);
+                return rc;
+            }
+        }
     }
-
-    rc
 }
 
 fn rolling_hashes(

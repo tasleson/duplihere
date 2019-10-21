@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Copyright (C) 2019 Tony Asleson <tony.asleson@gmail.com>
+
 extern crate argparse_rs;
 
 use argparse_rs::{ArgParser, ArgType};

@@ -26,27 +26,35 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 fn file_signatures(filename: &String) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::with_capacity(2048);
 
-    let file = File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
-    let mut reader = BufReader::new(file);
+    match File::open(filename.clone()) {
+        Ok(file) => {
+            let mut reader = BufReader::new(file);
 
-    loop {
-        let mut buf: Vec<u8> = vec![];
-        match reader.read_until(0xA, &mut buf) {
-            Ok(num_bytes) => {
-                if num_bytes == 0 {
-                    return rc;
-                } else {
-                    let l = String::from_utf8_lossy(&buf);
-                    rc.push(calculate_hash(&l.trim()));
-                    buf.truncate(0);
+            loop {
+                let mut buf: Vec<u8> = vec![];
+                match reader.read_until(0xA, &mut buf) {
+                    Ok(num_bytes) => {
+                        if num_bytes == 0 {
+                            return rc;
+                        } else {
+                            let l = String::from_utf8_lossy(&buf);
+                            rc.push(calculate_hash(&l.trim()));
+                            buf.truncate(0);
+                        }
+                    }
+                    Err(e) => {
+                        println!("WARNING: Error processing file {} reason {}", filename, e);
+                        return rc;
+                    }
                 }
             }
-            Err(e) => {
-                println!("WARNING: Error processing file {} reason {}", filename, e);
-                return rc;
-            }
+        }
+        Err(e) => {
+            println!("ERROR: Unable to open {}, reason {}", filename, e);
         }
     }
+
+    rc
 }
 
 fn rolling_hashes(

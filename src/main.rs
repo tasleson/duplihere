@@ -213,8 +213,10 @@ fn find_collisions(
     }
 
     fn print_dup_text(filename: &String, start: usize, count: usize) {
-        let file =
-            File::open(filename.clone()).expect(&format!("Unable to open file {:?}", filename));
+        let file = File::open(filename.clone()).expect(&format!(
+            "Unable to open file we have already opened {:?}",
+            filename
+        ));
         let mut reader = BufReader::new(file);
         let mut line_number = 0;
         let end = start + count;

@@ -14,6 +14,7 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
 use std::iter::FromIterator;
+use std::process;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -379,15 +380,32 @@ fn main() {
             let files = p.get_with("files", str_to_strings).unwrap();
 
             for g in files {
-                for entry in glob(&g).expect("Bad glob patter") {
-                    for filename in &entry {
-                        let file_str_name = String::from(filename.to_str().unwrap());
-                        process_file(
-                            &mut collision_hashes,
-                            &mut file_hashes,
-                            &file_str_name,
-                            num_lines,
-                        );
+                match glob(&g) {
+                    Ok(entries) => {
+                        for filename in entries {
+                            match filename {
+                                Ok(specific_file) => {
+                                    if specific_file.is_file() {
+                                        let file_str_name =
+                                            String::from(specific_file.to_str().unwrap());
+                                        process_file(
+                                            &mut collision_hashes,
+                                            &mut file_hashes,
+                                            &file_str_name,
+                                            num_lines,
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("Unable to process {:?}", e);
+                                    process::exit(1);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Bad glob pattern supplied '{}', error: {}", g, e);
+                        process::exit(1);
                     }
                 }
             }

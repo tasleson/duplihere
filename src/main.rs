@@ -10,6 +10,7 @@ use glob::glob;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::env;
+use std::fs::canonicalize;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
@@ -86,16 +87,25 @@ fn process_file(
     filename: &String,
     min_lines: usize,
 ) -> () {
-    if !file_hashes.contains_key(filename) {
-        file_hashes.insert(filename.clone(), file_signatures(filename));
-        rolling_hashes(
-            collision_hash,
-            filename,
-            file_hashes
-                .get(filename)
-                .expect("We just inserted filename"),
-            min_lines,
-        );
+    match canonicalize(filename) {
+        Ok(fn_ok) => {
+            let c_name_str = String::from(fn_ok.to_str().unwrap());
+
+            if !file_hashes.contains_key(&c_name_str) {
+                file_hashes.insert(c_name_str.clone(), file_signatures(&c_name_str));
+                rolling_hashes(
+                    collision_hash,
+                    &c_name_str,
+                    file_hashes
+                        .get(&c_name_str)
+                        .expect("We just inserted filename"),
+                    min_lines,
+                );
+            }
+        }
+        Err(e) => {
+            println!("WARNING: Unable to process file {}, reason {}", filename, e);
+        }
     }
 }
 

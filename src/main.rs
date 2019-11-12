@@ -262,9 +262,8 @@ fn find_collisions(
             }
         });
         let mut num_lines = 0;
-        let total_num = printable_results.len();
 
-        for p in printable_results {
+        for p in printable_results.iter() {
             println!(
                 "********************************************************************************"
             );

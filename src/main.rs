@@ -2,8 +2,8 @@
 //
 // Copyright (C) 2019 Tony Asleson <tony.asleson@gmail.com>
 extern crate rags_rs as rags;
-use rags::argparse;
 use glob::glob;
+use rags::argparse;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -290,7 +290,9 @@ fn find_collisions(
 
         println!(
             "Found {} duplicate lines in {} chunks\n{}",
-            num_lines, printable_results.len(), "https://github.com/tasleson/duplihere"
+            num_lines,
+            printable_results.len(),
+            "https://github.com/tasleson/duplihere"
         )
     }
 
@@ -356,13 +358,12 @@ impl Default for Options {
         Options {
             lines: 6,
             print: false,
-            file_globs: vec!(),
+            file_globs: vec![],
         }
     }
 }
 
-static LONG_DESC: &'static str =
-"Find duplicate lines of text in one or more text files.
+static LONG_DESC: &'static str = "Find duplicate lines of text in one or more text files.
 
 The duplicated text can be at different levels of indention,
 but otherwise needs to be identical.
@@ -370,15 +371,29 @@ but otherwise needs to be identical.
 More information: https://github.com/tasleson/duplihere";
 
 fn main() -> Result<(), rags::Error> {
-
     let mut opts = Options::default();
     let mut parser = argparse!();
-    parser.app_desc("find duplicate text")
+    parser
+        .app_desc("find duplicate text")
         .app_long_desc(LONG_DESC)
         .group("argument", "description")?
         .flag('p', "print", "print duplicate text", &mut opts.print, false)?
-        .arg('l', "lines", "minimum number of duplicate lines", &mut opts.lines, Some("<number>"), false)?
-        .list('f', "files", "1 or more file pattern(s), eg. \"**/*.[h|c]\" \"*.py\"", &mut opts.file_globs, Some("<pattern 1> <pattern n>"), true)?
+        .arg(
+            'l',
+            "lines",
+            "minimum number of duplicate lines",
+            &mut opts.lines,
+            Some("<number>"),
+            false,
+        )?
+        .list(
+            'f',
+            "files",
+            "1 or more file pattern(s), eg. \"**/*.[h|c]\" \"*.py\"",
+            &mut opts.file_globs,
+            Some("<pattern 1> <pattern n>"),
+            true,
+        )?
         .done()?;
 
     if parser.wants_help() {
@@ -388,44 +403,43 @@ fn main() -> Result<(), rags::Error> {
         let mut file_hashes: HashMap<String, Vec<u64>> = HashMap::new();
 
         for g in opts.file_globs {
-                match glob(&g) {
-                    Ok(entries) => {
-                        for filename in entries {
-                            match filename {
-                                Ok(specific_file) => {
-                                    if specific_file.is_file() {
-                                        let file_str_name =
-                                            String::from(specific_file.to_str().unwrap());
-                                        process_file(
-                                            &mut collision_hashes,
-                                            &mut file_hashes,
-                                            &file_str_name,
-                                            opts.lines,
-                                        );
-                                    }
+            match glob(&g) {
+                Ok(entries) => {
+                    for filename in entries {
+                        match filename {
+                            Ok(specific_file) => {
+                                if specific_file.is_file() {
+                                    let file_str_name =
+                                        String::from(specific_file.to_str().unwrap());
+                                    process_file(
+                                        &mut collision_hashes,
+                                        &mut file_hashes,
+                                        &file_str_name,
+                                        opts.lines,
+                                    );
                                 }
-                                Err(e) => {
-                                    println!("Unable to process {:?}", e);
-                                    process::exit(1);
-                                }
+                            }
+                            Err(e) => {
+                                println!("Unable to process {:?}", e);
+                                process::exit(1);
                             }
                         }
                     }
-                    Err(e) => {
-                        println!("Bad glob pattern supplied '{}', error: {}", g, e);
-                        process::exit(1);
-                    }
+                }
+                Err(e) => {
+                    println!("Bad glob pattern supplied '{}', error: {}", g, e);
+                    process::exit(1);
                 }
             }
+        }
 
-            find_collisions(
-                &mut collision_hashes,
-                &mut file_hashes,
-                opts.lines,
-                opts.print,
-            );
-
+        find_collisions(
+            &mut collision_hashes,
+            &mut file_hashes,
+            opts.lines,
+            opts.print,
+        );
     }
 
-   Ok(())
+    Ok(())
 }

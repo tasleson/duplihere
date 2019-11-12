@@ -292,8 +292,8 @@ fn find_collisions(
         }
 
         println!(
-            "Found {} duplicate lines in {} chunks",
-            num_lines, total_num
+            "Found {} duplicate lines in {} chunks\n{}",
+            num_lines, printable_results.len(), "https://github.com/tasleson/duplihere"
         )
     }
 

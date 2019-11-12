@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
 // Copyright (C) 2019 Tony Asleson <tony.asleson@gmail.com>
-
-extern crate argparse_rs;
-
-use argparse_rs::{ArgParser, ArgType};
+extern crate rags_rs as rags;
+use rags::argparse;
 use glob::glob;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::env;
 use std::fs::canonicalize;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -347,58 +344,50 @@ fn find_collisions(
     print_report(&mut printable_results, print_text);
 }
 
-fn main() {
-    let mut parser = ArgParser::new("duplihere".into());
+#[derive(Debug)]
+pub struct Options {
+    lines: usize,
+    print: bool,
+    file_globs: Vec<String>,
+}
 
-    parser.add_opt(
-        "lines",
-        Some("6"),
-        'l',
-        false,
-        "Minimum number of duplicate lines, default 6",
-        ArgType::Option,
-    );
-    parser.add_opt(
-        "print",
-        Some("false"),
-        'p',
-        false,
-        "Print duplicate text",
-        ArgType::Flag,
-    );
-    parser.add_opt("files", None, 'f', true, "File pattern(s)", ArgType::List);
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            lines: 6,
+            print: false,
+            file_globs: vec!(),
+        }
+    }
+}
 
-    let args: Vec<String> = env::args().collect();
-    let mut collision_hashes: HashMap<u64, Vec<(String, usize)>> = HashMap::new();
-    let mut file_hashes: HashMap<String, Vec<u64>> = HashMap::new();
+static LONG_DESC: &'static str =
+"Find duplicate lines of text in one or more text files.
 
-    let parsed = parser.parse(args.iter());
+The duplicated text can be at different levels of indention,
+but otherwise needs to be identical.
 
-    match parsed {
-        Ok(p) => {
-            let num_lines: usize = p
-                .get::<String>("lines")
-                .unwrap()
-                .parse::<usize>()
-                .unwrap_or(6);
-            if num_lines < 3 {
-                println!("Minimum number of lines is 3, {} supplied!", num_lines);
-                parser.help();
-                return;
-            }
+More information: https://github.com/tasleson/duplihere";
 
-            let str_to_strings = |s: &str| {
-                Some(
-                    s.split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>(),
-                )
-            };
+fn main() -> Result<(), rags::Error> {
 
-            let print_txt = p.get::<bool>("print").unwrap_or(false);
-            let files = p.get_with("files", str_to_strings).unwrap();
+    let mut opts = Options::default();
+    let mut parser = argparse!();
+    parser.app_desc("find duplicate text")
+        .app_long_desc(LONG_DESC)
+        .group("argument", "description")?
+        .flag('p', "print", "print duplicate text", &mut opts.print, false)?
+        .arg('l', "lines", "minimum number of duplicate lines", &mut opts.lines, Some("<number>"), false)?
+        .list('f', "files", "1 or more file pattern(s), eg. \"**/*.[h|c]\" \"*.py\"", &mut opts.file_globs, Some("<pattern 1> <pattern n>"), true)?
+        .done()?;
 
-            for g in files {
+    if parser.wants_help() {
+        parser.print_help();
+    } else {
+        let mut collision_hashes: HashMap<u64, Vec<(String, usize)>> = HashMap::new();
+        let mut file_hashes: HashMap<String, Vec<u64>> = HashMap::new();
+
+        for g in opts.file_globs {
                 match glob(&g) {
                     Ok(entries) => {
                         for filename in entries {
@@ -411,7 +400,7 @@ fn main() {
                                             &mut collision_hashes,
                                             &mut file_hashes,
                                             &file_str_name,
-                                            num_lines,
+                                            opts.lines,
                                         );
                                     }
                                 }
@@ -432,13 +421,11 @@ fn main() {
             find_collisions(
                 &mut collision_hashes,
                 &mut file_hashes,
-                num_lines,
-                print_txt,
+                opts.lines,
+                opts.print,
             );
-        }
-        Err(e) => {
-            println!("{}!\n", e);
-            parser.help();
-        }
+
     }
+
+   Ok(())
 }

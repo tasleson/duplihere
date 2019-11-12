@@ -19,20 +19,22 @@ Developers are lazy, they don't change things :-)
 ### How to use
 
 ```bash
-Usage:	duplihere [--help ] [--lines LINES] [--files FILES...] [--print ] 
-Options:
+$ duplihere --help
+duplihere - 0.2.0 - find duplicate text
 
---help (-h)	Required: false	Type: Flag
-	Show this help message
+usage: duplihere [-p -l <number>] -f <pattern 1> <pattern n> 
 
---lines (-l)	Required: false	Type: Option
-	Minimum number of duplicate lines, default 6
+Find duplicate lines of text in one or more text files.
 
---files (-f)	Required: true	Type: List
-	File pattern(s)
+The duplicated text can be at different levels of indention,
+but otherwise needs to be identical.
 
---print (-p)	Required: false	Type: Flag
-	Print duplicate text
+More information: https://github.com/tasleson/duplihere
+
+argument:                                      description
+    -p, --print                                print duplicate text [default: false]
+    -l, --lines <number>                       minimum number of duplicate lines [default: 6]
+    -f, --files <pattern 1> <pattern n>        1 or more file pattern(s), eg. "**/*.[h|c]" "*.py" [required]
 
 ```
 

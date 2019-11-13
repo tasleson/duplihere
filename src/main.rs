@@ -91,7 +91,7 @@ fn process_file(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     filename: &String,
     min_lines: usize,
-) -> bool {
+) -> () {
     match canonicalize(filename) {
         Ok(fn_ok) => {
             let c_name_str = String::from(fn_ok.to_str().unwrap());
@@ -106,14 +106,12 @@ fn process_file(
                         .expect("We just inserted filename"),
                     min_lines,
                 );
-                return true;
             }
         }
         Err(e) => {
             println!("WARNING: Unable to process file {}, reason {}", filename, e);
         }
     }
-    return false;
 }
 
 #[derive(Debug)]
@@ -196,7 +194,6 @@ fn find_collisions(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     min_lines: usize,
     print_text: bool,
-    num_files: usize,
 ) -> () {
     fn chunk_sig(coll: &Collision) -> u64 {
         let mut s = DefaultHasher::new();
@@ -347,7 +344,7 @@ fn find_collisions(
         }
     }
 
-    print_report(&mut printable_results, print_text, num_files);
+    print_report(&mut printable_results, print_text, file_hashes.len());
 }
 
 #[derive(Debug)]
@@ -375,7 +372,6 @@ but otherwise needs to be identical.
 More information: https://github.com/tasleson/duplihere";
 
 fn main() -> Result<(), rags::Error> {
-    let mut num_files = 0;
     let mut opts = Options::default();
     let mut parser = argparse!();
     parser
@@ -416,14 +412,12 @@ fn main() -> Result<(), rags::Error> {
                                 if specific_file.is_file() {
                                     let file_str_name =
                                         String::from(specific_file.to_str().unwrap());
-                                    if process_file(
+                                    process_file(
                                         &mut collision_hashes,
                                         &mut file_hashes,
                                         &file_str_name,
                                         opts.lines,
-                                    ) {
-                                        num_files += 1;
-                                    }
+                                    );
                                 }
                             }
                             Err(e) => {
@@ -445,7 +439,6 @@ fn main() -> Result<(), rags::Error> {
             &mut file_hashes,
             opts.lines,
             opts.print,
-            num_files,
         );
     }
 

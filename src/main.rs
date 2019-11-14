@@ -299,7 +299,12 @@ fn find_collisions(
 
     let mut results_hash: HashMap<u64, Collision> = HashMap::new();
 
-    for collisions in collision_hash.values_mut().filter(|a| a.len() > 1) {
+    // We have processed all the files, remove entries for which we didn't have any collisions
+    // to reduce memory consumption
+    collision_hash.retain(|_, v| v.len() > 1);
+    collision_hash.shrink_to_fit();
+
+    for collisions in collision_hash.values_mut() {
         for l_idx in 0..(collisions.len() - 1) {
             for r_idx in l_idx..collisions.len() {
                 let (l_file, l_start) = &collisions[l_idx];
@@ -319,6 +324,12 @@ fn find_collisions(
             }
         }
     }
+
+    let num_files = file_hashes.len();
+    file_hashes.clear();
+    file_hashes.shrink_to_fit();
+    collision_hash.clear();
+    collision_hash.shrink_to_fit();
 
     let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
     final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
@@ -344,7 +355,10 @@ fn find_collisions(
         }
     }
 
-    print_report(&mut printable_results, print_text, file_hashes.len());
+    chunk_processed.clear();
+    chunk_processed.shrink_to_fit();
+
+    print_report(&mut printable_results, print_text, num_files);
 }
 
 #[derive(Debug)]

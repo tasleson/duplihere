@@ -121,6 +121,22 @@ struct Collision {
     files: Vec<(String, usize)>,
 }
 
+impl Collision {
+    fn signature(&self) -> u64 {
+        let mut s = DefaultHasher::new();
+
+        for i in &self.files {
+            let file_n = &i.0;
+            let starts = i.1;
+            let end = starts + 1 + self.num_lines;
+            let rep = format!("{}{}", end, file_n);
+            rep.hash(&mut s);
+        }
+
+        s.finish()
+    }
+}
+
 fn walk_collision(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     left_file: &String,
@@ -195,20 +211,6 @@ fn find_collisions(
     min_lines: usize,
     print_text: bool,
 ) -> () {
-    fn chunk_sig(coll: &Collision) -> u64 {
-        let mut s = DefaultHasher::new();
-
-        for i in &coll.files {
-            let file_n = &i.0;
-            let starts = i.1;
-            let end = starts + 1 + coll.num_lines;
-            let rep = format!("{}{}", end, file_n);
-            rep.hash(&mut s);
-        }
-
-        s.finish()
-    }
-
     fn print_dup_text(filename: &String, start: usize, count: usize) {
         let file = File::open(filename.clone()).expect(&format!(
             "Unable to open file we have already opened {:?}",
@@ -348,7 +350,7 @@ fn find_collisions(
         });
         ea.files.dedup();
 
-        let cs = chunk_sig(ea);
+        let cs = ea.signature();
         if chunk_processed.get(&cs).is_none() {
             chunk_processed.insert(cs, true);
             printable_results.push(ea);

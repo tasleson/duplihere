@@ -59,7 +59,7 @@ fn rolling_hashes(
     filename: &String,
     file_signatures: &Vec<u64>,
     min_lines: usize,
-) -> () {
+) {
     if file_signatures.len() > min_lines {
         let num_lines = file_signatures.len() - min_lines;
         let mut prev_hash: u64 = 0;
@@ -91,7 +91,7 @@ fn process_file(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     filename: &String,
     min_lines: usize,
-) -> () {
+) {
     match canonicalize(filename) {
         Ok(fn_ok) => {
             let c_name_str = String::from(fn_ok.to_str().unwrap());
@@ -210,7 +210,7 @@ fn find_collisions(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     min_lines: usize,
     print_text: bool,
-) -> () {
+) {
     fn print_dup_text(filename: &String, start: usize, count: usize) {
         let file = File::open(filename.clone()).expect(&format!(
             "Unable to open file we have already opened {:?}",

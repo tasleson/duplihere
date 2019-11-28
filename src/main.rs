@@ -57,7 +57,7 @@ fn file_signatures(filename: &String) -> Vec<u64> {
 fn rolling_hashes(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     filename: &String,
-    file_signatures: &Vec<u64>,
+    file_signatures: &[u64],
     min_lines: usize,
 ) {
     if file_signatures.len() > min_lines {

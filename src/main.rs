@@ -20,10 +20,10 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
-fn file_signatures(filename: &String) -> Vec<u64> {
+fn file_signatures(filename: &str) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::with_capacity(2048);
 
-    match File::open(filename.clone()) {
+    match File::open(filename.to_string()) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
 
@@ -56,7 +56,7 @@ fn file_signatures(filename: &String) -> Vec<u64> {
 
 fn rolling_hashes(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
-    filename: &String,
+    filename: &str,
     file_signatures: &[u64],
     min_lines: usize,
 ) {
@@ -72,10 +72,10 @@ fn rolling_hashes(
 
             if prev_hash != digest {
                 match collision_hash.get_mut(&digest) {
-                    Some(existing) => existing.push((filename.clone(), i)),
+                    Some(existing) => existing.push((filename.to_string(), i)),
                     None => {
                         let mut entry: Vec<(String, usize)> = Vec::new();
-                        entry.push((filename.clone(), i));
+                        entry.push((filename.to_string(), i));
                         collision_hash.insert(digest, entry);
                     }
                 }
@@ -89,7 +89,7 @@ fn rolling_hashes(
 fn process_file(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     file_hashes: &mut HashMap<String, Vec<u64>>,
-    filename: &String,
+    filename: &str,
     min_lines: usize,
 ) {
     match canonicalize(filename) {
@@ -139,9 +139,9 @@ impl Collision {
 
 fn walk_collision(
     file_hashes: &mut HashMap<String, Vec<u64>>,
-    left_file: &String,
+    left_file: &str,
     left_start: usize,
-    right_file: &String,
+    right_file: &str,
     right_start: usize,
     min_lines: usize,
 ) -> Option<Collision> {
@@ -193,8 +193,8 @@ fn walk_collision(
 
     if offset >= min_lines {
         let mut files: Vec<(String, usize)> = Vec::new();
-        files.push((left_file.clone(), left_start));
-        files.push((right_file.clone(), right_start));
+        files.push((left_file.to_string(), left_start));
+        files.push((right_file.to_string(), right_start));
         return Some(Collision {
             key: s.finish(),
             num_lines: offset,
@@ -211,7 +211,7 @@ fn find_collisions(
     min_lines: usize,
     print_text: bool,
 ) {
-    fn print_dup_text(filename: &String, start: usize, count: usize) {
+    fn print_dup_text(filename: &str, start: usize, count: usize) {
         let file = File::open(filename).unwrap_or_else(|_| {
             panic!("Unable to open file we have already opened {:?}", filename)
         });

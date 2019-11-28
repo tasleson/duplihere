@@ -380,7 +380,7 @@ impl Default for Options {
     }
 }
 
-static LONG_DESC: &'static str = "Find duplicate lines of text in one or more text files.
+static LONG_DESC: &str = "Find duplicate lines of text in one or more text files.
 
 The duplicated text can be at different levels of indention,
 but otherwise needs to be identical.

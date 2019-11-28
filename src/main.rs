@@ -137,6 +137,13 @@ impl Collision {
     }
 }
 
+fn overlap(left: (&str, usize), right: (&str, usize), end: usize) -> bool {
+    left.0 == right.0
+        && (left.1 == right.1
+            || (right.1 >= left.1 && right.1 <= (left.1 + end))
+            || (left.1 >= right.1 && left.1 <= (right.1 + end)))
+}
+
 fn walk_collision(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     left_file: &str,
@@ -152,12 +159,12 @@ fn walk_collision(
         .get(right_file)
         .expect("Expect file in file_hashes");
 
-    // If we have collisions where we overlap
-    if left_file == right_file
-        && (left_start == right_start
-            || (right_start >= left_start && right_start <= (left_start + min_lines))
-            || (left_start >= right_start && left_start <= (right_start + min_lines)))
-    {
+    // If we have collisions and we overlap, skip
+    if overlap(
+        (left_file, left_start),
+        (right_file, right_start),
+        min_lines,
+    ) {
         return None;
     }
 
@@ -182,16 +189,16 @@ fn walk_collision(
         }
     }
 
-    // If after walking we overlap skip too
-    if left_file == right_file
-        && offset >= min_lines
-        && ((right_start >= left_start && right_start <= (left_start + offset))
-            || (left_start >= right_start && left_start <= (right_start + offset)))
-    {
-        return None;
-    }
-
     if offset >= min_lines {
+        // If after walking we overlap skip too
+        if overlap(
+            (left_file, left_start),
+            (right_file, right_start),
+            min_lines,
+        ) {
+            return None;
+        }
+
         let mut files: Vec<(String, usize)> = Vec::new();
         files.push((left_file.to_string(), left_start));
         files.push((right_file.to_string(), right_start));

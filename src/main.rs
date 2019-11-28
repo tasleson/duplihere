@@ -146,25 +146,19 @@ fn overlap(left: (&str, usize), right: (&str, usize), end: usize) -> bool {
 
 fn walk_collision(
     file_hashes: &mut HashMap<String, Vec<u64>>,
-    left_file: &str,
-    left_start: usize,
-    right_file: &str,
-    right_start: usize,
+    l_info: (&str, usize),
+    r_info: (&str, usize),
     min_lines: usize,
 ) -> Option<Collision> {
     let l_h = file_hashes
-        .get(left_file)
+        .get(l_info.0)
         .expect("Expect file in file_hashes");
     let r_h = file_hashes
-        .get(right_file)
+        .get(r_info.0)
         .expect("Expect file in file_hashes");
 
     // If we have collisions and we overlap, skip
-    if overlap(
-        (left_file, left_start),
-        (right_file, right_start),
-        min_lines,
-    ) {
+    if overlap(l_info, r_info, min_lines) {
         return None;
     }
 
@@ -174,8 +168,8 @@ fn walk_collision(
     let mut s = DefaultHasher::new();
 
     loop {
-        let l_index = left_start + offset;
-        let r_index = right_start + offset;
+        let l_index = l_info.1 + offset;
+        let r_index = r_info.1 + offset;
 
         if l_index < l_num && r_index < r_num {
             if l_h[l_index] == r_h[r_index] {
@@ -191,17 +185,13 @@ fn walk_collision(
 
     if offset >= min_lines {
         // If after walking we overlap skip too
-        if overlap(
-            (left_file, left_start),
-            (right_file, right_start),
-            min_lines,
-        ) {
+        if overlap(l_info, r_info, offset) {
             return None;
         }
 
         let mut files: Vec<(String, usize)> = Vec::new();
-        files.push((left_file.to_string(), left_start));
-        files.push((right_file.to_string(), right_start));
+        files.push((l_info.0.to_string(), l_info.1));
+        files.push((r_info.0.to_string(), r_info.1));
         return Some(Collision {
             key: s.finish(),
             num_lines: offset,
@@ -316,8 +306,12 @@ fn find_collisions(
                 let (l_file, l_start) = &collisions[l_idx];
                 let (r_file, r_start) = &collisions[r_idx];
 
-                let max_collision =
-                    walk_collision(file_hashes, &l_file, *l_start, &r_file, *r_start, min_lines);
+                let max_collision = walk_collision(
+                    file_hashes,
+                    (&l_file, *l_start),
+                    (&r_file, *r_start),
+                    min_lines,
+                );
 
                 if let Some(mut coll) = max_collision {
                     match results_hash.get_mut(&coll.key) {

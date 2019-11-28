@@ -191,11 +191,11 @@ fn walk_collision(
     let mut files: Vec<(String, usize)> = Vec::new();
     files.push((l_info.0.to_string(), l_info.1));
     files.push((r_info.0.to_string(), r_info.1));
-    return Some(Collision {
+    Some(Collision {
         key: s.finish(),
         num_lines: offset,
         files,
-    });
+    })
 }
 
 fn find_collisions(

@@ -20,10 +20,10 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
-fn file_signatures(filename: &String) -> Vec<u64> {
+fn file_signatures(filename: &str) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::with_capacity(2048);
 
-    match File::open(filename.clone()) {
+    match File::open(filename.to_string()) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
 
@@ -56,26 +56,26 @@ fn file_signatures(filename: &String) -> Vec<u64> {
 
 fn rolling_hashes(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
-    filename: &String,
-    file_signatures: &Vec<u64>,
+    filename: &str,
+    file_signatures: &[u64],
     min_lines: usize,
-) -> () {
+) {
     if file_signatures.len() > min_lines {
         let num_lines = file_signatures.len() - min_lines;
         let mut prev_hash: u64 = 0;
         for i in 0..num_lines {
             let mut s = DefaultHasher::new();
-            for n in i..(i + min_lines) {
-                file_signatures[n].hash(&mut s);
+            for n in file_signatures.iter().skip(i).take(min_lines) {
+                n.hash(&mut s);
             }
             let digest = s.finish();
 
             if prev_hash != digest {
                 match collision_hash.get_mut(&digest) {
-                    Some(existing) => existing.push((filename.clone(), i)),
+                    Some(existing) => existing.push((filename.to_string(), i)),
                     None => {
                         let mut entry: Vec<(String, usize)> = Vec::new();
-                        entry.push((filename.clone(), i));
+                        entry.push((filename.to_string(), i));
                         collision_hash.insert(digest, entry);
                     }
                 }
@@ -89,9 +89,9 @@ fn rolling_hashes(
 fn process_file(
     collision_hash: &mut HashMap<u64, Vec<(String, usize)>>,
     file_hashes: &mut HashMap<String, Vec<u64>>,
-    filename: &String,
+    filename: &str,
     min_lines: usize,
-) -> () {
+) {
     match canonicalize(filename) {
         Ok(fn_ok) => {
             let c_name_str = String::from(fn_ok.to_str().unwrap());
@@ -139,9 +139,9 @@ impl Collision {
 
 fn walk_collision(
     file_hashes: &mut HashMap<String, Vec<u64>>,
-    left_file: &String,
+    left_file: &str,
     left_start: usize,
-    right_file: &String,
+    right_file: &str,
     right_start: usize,
     min_lines: usize,
 ) -> Option<Collision> {
@@ -193,8 +193,8 @@ fn walk_collision(
 
     if offset >= min_lines {
         let mut files: Vec<(String, usize)> = Vec::new();
-        files.push((left_file.clone(), left_start));
-        files.push((right_file.clone(), right_start));
+        files.push((left_file.to_string(), left_start));
+        files.push((right_file.to_string(), right_start));
         return Some(Collision {
             key: s.finish(),
             num_lines: offset,
@@ -210,12 +210,11 @@ fn find_collisions(
     file_hashes: &mut HashMap<String, Vec<u64>>,
     min_lines: usize,
     print_text: bool,
-) -> () {
-    fn print_dup_text(filename: &String, start: usize, count: usize) {
-        let file = File::open(filename.clone()).expect(&format!(
-            "Unable to open file we have already opened {:?}",
-            filename
-        ));
+) {
+    fn print_dup_text(filename: &str, start: usize, count: usize) {
+        let file = File::open(filename).unwrap_or_else(|_| {
+            panic!("Unable to open file we have already opened {:?}", filename)
+        });
         let mut reader = BufReader::new(file);
         let mut line_number = 0;
         let end = start + count;
@@ -227,11 +226,9 @@ fn find_collisions(
                 Ok(num_bytes) => {
                     if num_bytes == 0 {
                         break;
-                    } else {
-                        if line_number >= start && line_number < end {
-                            let l = String::from_utf8_lossy(&buf);
-                            print!("{}", l);
-                        }
+                    } else if line_number >= start && line_number < end {
+                        let l = String::from_utf8_lossy(&buf);
+                        print!("{}", l);
                     }
 
                     if line_number > end {
@@ -291,11 +288,11 @@ fn find_collisions(
         }
 
         println!(
-            "Found {} duplicate lines in {} chunks in {} files.\n{}",
+            "Found {} duplicate lines in {} chunks in {} files.\n\
+             https://github.com/tasleson/duplihere",
             num_lines,
             printable_results.len(),
-            num_files,
-            "https://github.com/tasleson/duplihere"
+            num_files
         )
     }
 
@@ -380,7 +377,7 @@ impl Default for Options {
     }
 }
 
-static LONG_DESC: &'static str = "Find duplicate lines of text in one or more text files.
+static LONG_DESC: &str = "Find duplicate lines of text in one or more text files.
 
 The duplicated text can be at different levels of indention,
 but otherwise needs to be identical.

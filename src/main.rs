@@ -226,11 +226,9 @@ fn find_collisions(
                 Ok(num_bytes) => {
                     if num_bytes == 0 {
                         break;
-                    } else {
-                        if line_number >= start && line_number < end {
-                            let l = String::from_utf8_lossy(&buf);
-                            print!("{}", l);
-                        }
+                    } else if line_number >= start && line_number < end {
+                        let l = String::from_utf8_lossy(&buf);
+                        print!("{}", l);
                     }
 
                     if line_number > end {

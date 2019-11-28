@@ -65,8 +65,8 @@ fn rolling_hashes(
         let mut prev_hash: u64 = 0;
         for i in 0..num_lines {
             let mut s = DefaultHasher::new();
-            for n in i..(i + min_lines) {
-                file_signatures[n].hash(&mut s);
+            for n in file_signatures.iter().skip(i).take(min_lines) {
+                n.hash(&mut s);
             }
             let digest = s.finish();
 

@@ -7,6 +7,7 @@ use rags::argparse;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs::canonicalize;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -134,6 +135,31 @@ impl Collision {
         }
 
         s.finish()
+    }
+
+    // Remove overlaps for a collision result when they all refer to the same file.  This gets
+    // ugly when a file contains a repeating sequence which is separated by 1 or more lines, but
+    // less than the number that are duplicated.
+    // A good example of this is:
+    // linux/drivers/net/wireless/broadcom/brcm80211/brcmsmac/phy/phytbl_n.c
+    fn remove_overlap_same_file(&mut self) {
+        let first = &self.files[0].0;
+        let mut keep: VecDeque<(String, usize)> = VecDeque::new();
+
+        // If all the files are the same, process any overlaps.
+        if self.files.iter().all(|(file, _)| file == first) {
+            while let Some(cur) = self.files.pop() {
+                if let Some(next_one) = self.files.last() {
+                    if !(cur.1 >= next_one.1 && cur.1 <= next_one.1 + self.num_lines) {
+                        keep.push_front(cur);
+                    }
+                } else {
+                    keep.push_front(cur);
+                    break;
+                }
+            }
+        }
+        self.files = Vec::from(keep);
     }
 }
 
@@ -343,6 +369,8 @@ fn find_collisions(
             }
         });
         ea.files.dedup();
+
+        ea.remove_overlap_same_file();
 
         let cs = ea.signature();
         if chunk_processed.get(&cs).is_none() {

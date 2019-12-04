@@ -158,8 +158,8 @@ impl Collision {
                     break;
                 }
             }
+            self.files = Vec::from(keep);
         }
-        self.files = Vec::from(keep);
     }
 }
 

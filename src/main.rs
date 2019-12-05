@@ -14,6 +14,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
 use std::iter::FromIterator;
 use std::process;
+use std::rc::Rc;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -233,7 +234,7 @@ fn find_collisions(
 ) {
     fn print_dup_text(file_id: usize, start: usize, count: usize, convert: &FileId) {
         let filename = convert.id_to_name(file_id);
-        let file = File::open(filename.clone()).unwrap_or_else(|_| {
+        let file = File::open(filename.as_str()).unwrap_or_else(|_| {
             panic!("Unable to open file we have already opened {:?}", filename)
         });
         let mut reader = BufReader::new(file);
@@ -394,8 +395,8 @@ fn find_collisions(
 
 struct FileId {
     num_files: usize,
-    index_to_name: Vec<String>,
-    name_to_index: HashMap<String, usize>,
+    index_to_name: Vec<Rc<String>>,
+    name_to_index: HashMap<Rc<String>, usize>,
 }
 
 impl FileId {
@@ -409,19 +410,21 @@ impl FileId {
 
     fn register_file(&mut self, file_name: &str) -> usize {
         let num = self.num_files;
-        self.index_to_name.push(file_name.to_string());
+        let name = Rc::new(file_name.to_string());
+
+        self.index_to_name.push(name.clone());
         self.name_to_index
-            .insert(file_name.to_string(), self.num_files);
+            .insert(name.clone(), self.num_files);
         self.num_files += 1;
         num
     }
 
-    fn id_to_name(&self, index: usize) -> String {
+    fn id_to_name(&self, index: usize) -> Rc<String> {
         self.index_to_name[index].clone()
     }
 
     fn file_exists(&self, file_name: &str) -> bool {
-        self.name_to_index.contains_key(file_name)
+        self.name_to_index.contains_key(&file_name.to_string())
     }
 }
 

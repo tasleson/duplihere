@@ -225,6 +225,33 @@ fn walk_collision(
     })
 }
 
+fn print_dup_text(filename: &str, start: usize, count: usize) {
+    let file = File::open(filename)
+        .unwrap_or_else(|_| panic!("Unable to open file we have already opened {:?}", filename));
+    let mut reader = BufReader::new(file);
+    let mut line_number = 0;
+    let end = start + count;
+
+    while line_number < end {
+        let mut buf: Vec<u8> = vec![];
+        match reader.read_until(0xA, &mut buf) {
+            Ok(num_bytes) => {
+                if num_bytes == 0 {
+                    break;
+                } else if line_number >= start {
+                    print!("{}", String::from_utf8_lossy(&buf));
+                }
+
+                line_number += 1;
+            }
+            Err(e) => {
+                println!("WARNING: Error processing file {} reason {}", filename, e);
+                break;
+            }
+        }
+    }
+}
+
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
     file_hashes: &mut HashMap<usize, Vec<u64>>,
@@ -232,34 +259,6 @@ fn find_collisions(
     print_text: bool,
     lookup: &FileId,
 ) {
-    fn print_dup_text(filename: &str, start: usize, count: usize) {
-        let file = File::open(filename).unwrap_or_else(|_| {
-            panic!("Unable to open file we have already opened {:?}", filename)
-        });
-        let mut reader = BufReader::new(file);
-        let mut line_number = 0;
-        let end = start + count;
-
-        while line_number < end {
-            let mut buf: Vec<u8> = vec![];
-            match reader.read_until(0xA, &mut buf) {
-                Ok(num_bytes) => {
-                    if num_bytes == 0 {
-                        break;
-                    } else if line_number >= start {
-                        print!("{}", String::from_utf8_lossy(&buf));
-                    }
-
-                    line_number += 1;
-                }
-                Err(e) => {
-                    println!("WARNING: Error processing file {} reason {}", filename, e);
-                    break;
-                }
-            }
-        }
-    }
-
     fn print_report(
         printable_results: &mut Vec<&Collision>,
         print_text: bool,

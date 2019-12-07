@@ -252,6 +252,66 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
     }
 }
 
+fn print_report(
+    printable_results: &mut Vec<&Collision>,
+    print_text: bool,
+    num_files: usize,
+    lookup: &FileId,
+) {
+    printable_results.sort_by(|a, b| {
+        if a.num_lines == b.num_lines {
+            if a.files[0].1 == b.files[0].1 {
+                a.files[0].0.cmp(&b.files[0].0)
+            } else {
+                a.files[0].1.cmp(&b.files[0].1)
+            }
+        } else {
+            a.num_lines.cmp(&b.num_lines)
+        }
+    });
+    let mut num_lines = 0;
+
+    for p in printable_results.iter() {
+        println!(
+            "********************************************************************************"
+        );
+        println!(
+            "Found {} copy & pasted lines in the following files:",
+            p.num_lines
+        );
+
+        num_lines += p.num_lines * p.files.len();
+
+        for spec_file in &p.files {
+            let filename = lookup.id_to_name(spec_file.0);
+            let start_line = spec_file.1;
+            let end_line = start_line + 1 + p.num_lines;
+            println!(
+                "Between lines {} and {} in {}",
+                start_line + 1,
+                end_line,
+                filename
+            );
+        }
+
+        if print_text {
+            print_dup_text(
+                lookup.id_to_name(p.files[0].0).as_str(),
+                p.files[0].1,
+                p.num_lines,
+            );
+        }
+    }
+
+    println!(
+        "Found {} duplicate lines in {} chunks in {} files.\n\
+         https://github.com/tasleson/duplihere",
+        num_lines,
+        printable_results.len(),
+        num_files
+    )
+}
+
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
     file_hashes: &mut HashMap<usize, Vec<u64>>,
@@ -259,66 +319,6 @@ fn find_collisions(
     print_text: bool,
     lookup: &FileId,
 ) {
-    fn print_report(
-        printable_results: &mut Vec<&Collision>,
-        print_text: bool,
-        num_files: usize,
-        lookup: &FileId,
-    ) {
-        printable_results.sort_by(|a, b| {
-            if a.num_lines == b.num_lines {
-                if a.files[0].1 == b.files[0].1 {
-                    a.files[0].0.cmp(&b.files[0].0)
-                } else {
-                    a.files[0].1.cmp(&b.files[0].1)
-                }
-            } else {
-                a.num_lines.cmp(&b.num_lines)
-            }
-        });
-        let mut num_lines = 0;
-
-        for p in printable_results.iter() {
-            println!(
-                "********************************************************************************"
-            );
-            println!(
-                "Found {} copy & pasted lines in the following files:",
-                p.num_lines
-            );
-
-            num_lines += p.num_lines * p.files.len();
-
-            for spec_file in &p.files {
-                let filename = lookup.id_to_name(spec_file.0);
-                let start_line = spec_file.1;
-                let end_line = start_line + 1 + p.num_lines;
-                println!(
-                    "Between lines {} and {} in {}",
-                    start_line + 1,
-                    end_line,
-                    filename
-                );
-            }
-
-            if print_text {
-                print_dup_text(
-                    lookup.id_to_name(p.files[0].0).as_str(),
-                    p.files[0].1,
-                    p.num_lines,
-                );
-            }
-        }
-
-        println!(
-            "Found {} duplicate lines in {} chunks in {} files.\n\
-             https://github.com/tasleson/duplihere",
-            num_lines,
-            printable_results.len(),
-            num_files
-        )
-    }
-
     let mut results_hash: HashMap<u64, Collision> = HashMap::new();
 
     // We have processed all the files, remove entries for which we didn't have any collisions

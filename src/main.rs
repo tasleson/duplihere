@@ -90,7 +90,7 @@ fn rolling_hashes(
 
 fn process_file(
     collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
-    file_hashes: &mut HashMap<usize, Vec<u64>>,
+    file_hashes: &mut Vec<Vec<u64>>,
     filename: &str,
     min_lines: usize,
     lookup: &mut FileId,
@@ -102,12 +102,7 @@ fn process_file(
             if !lookup.file_exists(&c_name_str) {
                 let fid = lookup.register_file(&c_name_str);
                 file_hashes.insert(fid, file_signatures(&c_name_str));
-                rolling_hashes(
-                    collision_hash,
-                    fid,
-                    file_hashes.get(&fid).expect("We just inserted filename"),
-                    min_lines,
-                );
+                rolling_hashes(collision_hash, fid, &file_hashes[fid], min_lines);
             }
         }
         Err(e) => {
@@ -185,17 +180,13 @@ fn overlap(left: (usize, usize), right: (usize, usize), end: usize) -> bool {
 }
 
 fn walk_collision(
-    file_hashes: &mut HashMap<usize, Vec<u64>>,
+    file_hashes: &mut Vec<Vec<u64>>,
     l_info: (usize, usize),
     r_info: (usize, usize),
     min_lines: usize,
 ) -> Option<Collision> {
-    let l_h = file_hashes
-        .get(&l_info.0)
-        .expect("Expect file in file_hashes");
-    let r_h = file_hashes
-        .get(&r_info.0)
-        .expect("Expect file in file_hashes");
+    let l_h = &file_hashes[l_info.0];
+    let r_h = &file_hashes[r_info.0];
 
     // If we have collisions and we overlap, skip
     if overlap(l_info, r_info, min_lines) {
@@ -327,7 +318,7 @@ fn print_report(
 
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
-    file_hashes: &mut HashMap<usize, Vec<u64>>,
+    file_hashes: &mut Vec<Vec<u64>>,
     min_lines: usize,
     print_text: bool,
     lookup: &FileId,
@@ -479,7 +470,7 @@ fn main() -> Result<(), rags::Error> {
         parser.print_help();
     } else {
         let mut collision_hashes: HashMap<u64, Vec<(usize, usize)>> = HashMap::new();
-        let mut file_hashes: HashMap<usize, Vec<u64>> = HashMap::new();
+        let mut file_hashes: Vec<Vec<u64>> = vec![];
         let mut lookup = FileId::new();
 
         for g in opts.file_globs {

@@ -162,6 +162,19 @@ impl Collision {
             self.files = Vec::from(keep);
         }
     }
+
+    fn scrub(&mut self) {
+        // Remove duplicates from each by sorting and then dedup
+        self.files.sort_by(|a, b| {
+            if a.1 == b.1 {
+                a.0.cmp(&b.0) // Number match, order by file name
+            } else {
+                a.1.cmp(&b.1) // Numbers don't match, order by number
+            }
+        });
+        self.files.dedup();
+        self.remove_overlap_same_file();
+    }
 }
 
 fn overlap(left: (usize, usize), right: (usize, usize), end: usize) -> bool {
@@ -364,18 +377,7 @@ fn find_collisions(
     let mut chunk_processed: HashMap<u64, bool> = HashMap::new();
 
     for ea in final_report {
-        // Remove duplicates from each by sorting and then dedup
-        ea.files.sort_by(|a, b| {
-            if a.1 == b.1 {
-                a.0.cmp(&b.0) // Number match, order by file name
-            } else {
-                a.1.cmp(&b.1) // Numbers don't match, order by number
-            }
-        });
-        ea.files.dedup();
-
-        ea.remove_overlap_same_file();
-
+        ea.scrub();
         let cs = ea.signature();
         if chunk_processed.get(&cs).is_none() {
             chunk_processed.insert(cs, true);

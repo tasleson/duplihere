@@ -232,9 +232,8 @@ fn find_collisions(
     print_text: bool,
     lookup: &FileId,
 ) {
-    fn print_dup_text(file_id: usize, start: usize, count: usize, convert: &FileId) {
-        let filename = convert.id_to_name(file_id);
-        let file = File::open(filename.as_str()).unwrap_or_else(|_| {
+    fn print_dup_text(filename: &str, start: usize, count: usize) {
+        let file = File::open(filename).unwrap_or_else(|_| {
             panic!("Unable to open file we have already opened {:?}", filename)
         });
         let mut reader = BufReader::new(file);
@@ -310,7 +309,11 @@ fn find_collisions(
             }
 
             if print_text {
-                print_dup_text(p.files[0].0, p.files[0].1, p.num_lines, lookup);
+                print_dup_text(
+                    lookup.id_to_name(p.files[0].0).as_str(),
+                    p.files[0].1,
+                    p.num_lines,
+                );
             }
         }
 

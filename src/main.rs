@@ -413,8 +413,7 @@ impl FileId {
         let name = Rc::new(file_name.to_string());
 
         self.index_to_name.push(name.clone());
-        self.name_to_index
-            .insert(name.clone(), self.num_files);
+        self.name_to_index.insert(name.clone(), self.num_files);
         self.num_files += 1;
         num
     }

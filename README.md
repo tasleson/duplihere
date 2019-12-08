@@ -50,4 +50,4 @@ Very early development with a questionable algorithm and implementation,
 but it does appear to provide some useful results.  Graph of memory and CPU
 consumption while looking through linux kernel source tree.
 
-![duplihere](https://user-images.githubusercontent.com/2520480/70284095-7c805e00-1788-11ea-9554-9060ad5e1ae1.png)
+![duplihere_u32_c_and_h](https://user-images.githubusercontent.com/2520480/70397200-cd38c680-19d5-11ea-84d8-191ec65fa9c7.png)

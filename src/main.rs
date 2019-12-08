@@ -57,8 +57,8 @@ fn file_signatures(filename: &str) -> Vec<u64> {
 }
 
 fn rolling_hashes(
-    collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
-    fid: usize,
+    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
+    fid: u32,
     file_signatures: &[u64],
     min_lines: usize,
 ) {
@@ -74,10 +74,10 @@ fn rolling_hashes(
 
             if prev_hash != digest {
                 match collision_hash.get_mut(&digest) {
-                    Some(existing) => existing.push((fid, i)),
+                    Some(existing) => existing.push((fid, i as u32)),
                     None => {
-                        let mut entry: Vec<(usize, usize)> = Vec::new();
-                        entry.push((fid, i));
+                        let mut entry: Vec<(u32, u32)> = Vec::new();
+                        entry.push((fid, i as u32));
                         collision_hash.insert(digest, entry);
                     }
                 }
@@ -89,7 +89,7 @@ fn rolling_hashes(
 }
 
 fn process_file(
-    collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
+    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
     filename: &str,
     min_lines: usize,
@@ -101,8 +101,8 @@ fn process_file(
 
             if !lookup.file_exists(&c_name_str) {
                 let fid = lookup.register_file(&c_name_str);
-                file_hashes.insert(fid, file_signatures(&c_name_str));
-                rolling_hashes(collision_hash, fid, &file_hashes[fid], min_lines);
+                file_hashes.insert(fid as usize, file_signatures(&c_name_str));
+                rolling_hashes(collision_hash, fid, &file_hashes[fid as usize], min_lines);
             }
         }
         Err(e) => {
@@ -114,8 +114,8 @@ fn process_file(
 #[derive(Debug)]
 struct Collision {
     key: u64,
-    num_lines: usize,
-    files: Vec<(usize, usize)>,
+    num_lines: u32,
+    files: Vec<(u32, u32)>,
 }
 
 impl Collision {
@@ -140,7 +140,7 @@ impl Collision {
     // linux/drivers/net/wireless/broadcom/brcm80211/brcmsmac/phy/phytbl_n.c
     fn remove_overlap_same_file(&mut self) {
         let first = &self.files[0].0;
-        let mut keep: VecDeque<(usize, usize)> = VecDeque::new();
+        let mut keep: VecDeque<(u32, u32)> = VecDeque::new();
 
         // If all the files are the same, process any overlaps.
         if self.files.iter().all(|(file, _)| file == first) {
@@ -172,7 +172,7 @@ impl Collision {
     }
 }
 
-fn overlap(left: (usize, usize), right: (usize, usize), end: usize) -> bool {
+fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
     left.0 == right.0
         && (left.1 == right.1
             || (right.1 >= left.1 && right.1 <= (left.1 + end))
@@ -181,26 +181,26 @@ fn overlap(left: (usize, usize), right: (usize, usize), end: usize) -> bool {
 
 fn walk_collision(
     file_hashes: &mut Vec<Vec<u64>>,
-    l_info: (usize, usize),
-    r_info: (usize, usize),
-    min_lines: usize,
+    l_info: (u32, u32),
+    r_info: (u32, u32),
+    min_lines: u32,
 ) -> Option<Collision> {
-    let l_h = &file_hashes[l_info.0];
-    let r_h = &file_hashes[r_info.0];
+    let l_h = &file_hashes[l_info.0 as usize];
+    let r_h = &file_hashes[r_info.0 as usize];
 
     // If we have collisions and we overlap, skip
     if overlap(l_info, r_info, min_lines) {
         return None;
     }
 
-    let mut offset: usize = 0;
+    let mut offset: u32 = 0;
     let l_num = l_h.len();
     let r_num = r_h.len();
     let mut s = DefaultHasher::new();
 
     loop {
-        let l_index = l_info.1 + offset;
-        let r_index = r_info.1 + offset;
+        let l_index: usize = (l_info.1 + offset) as usize;
+        let r_index: usize = (r_info.1 + offset) as usize;
 
         if l_index < l_num && r_index < r_num {
             if l_h[l_index] == r_h[r_index] {
@@ -219,7 +219,7 @@ fn walk_collision(
         return None;
     }
 
-    let mut files: Vec<(usize, usize)> = Vec::new();
+    let mut files: Vec<(u32, u32)> = Vec::new();
     files.push((l_info.0, l_info.1));
     files.push((r_info.0, r_info.1));
     Some(Collision {
@@ -273,7 +273,7 @@ fn print_report(
             a.num_lines.cmp(&b.num_lines)
         }
     });
-    let mut num_lines = 0;
+    let mut num_lines: u64 = 0;
 
     for p in printable_results.iter() {
         println!(
@@ -284,7 +284,7 @@ fn print_report(
             p.num_lines
         );
 
-        num_lines += p.num_lines * p.files.len();
+        num_lines += (p.num_lines as usize * p.files.len()) as u64;
 
         for spec_file in &p.files {
             let filename = lookup.id_to_name(spec_file.0);
@@ -300,9 +300,9 @@ fn print_report(
 
         if print_text {
             print_dup_text(
-                lookup.id_to_name(p.files[0].0).as_str(),
-                p.files[0].1,
-                p.num_lines,
+                lookup.id_to_name(p.files[0usize].0).as_str(),
+                p.files[0usize].1 as usize,
+                p.num_lines as usize,
             );
         }
     }
@@ -317,9 +317,9 @@ fn print_report(
 }
 
 fn find_collisions(
-    collision_hash: &mut HashMap<u64, Vec<(usize, usize)>>,
+    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
-    min_lines: usize,
+    min_lines: u32,
     print_text: bool,
     lookup: &FileId,
 ) {
@@ -383,9 +383,9 @@ fn find_collisions(
 }
 
 struct FileId {
-    num_files: usize,
+    num_files: u32,
     index_to_name: Vec<Rc<String>>,
-    name_to_index: HashMap<Rc<String>, usize>,
+    name_to_index: HashMap<Rc<String>, u32>,
 }
 
 impl FileId {
@@ -397,7 +397,7 @@ impl FileId {
         }
     }
 
-    fn register_file(&mut self, file_name: &str) -> usize {
+    fn register_file(&mut self, file_name: &str) -> u32 {
         let num = self.num_files;
         let name = Rc::new(file_name.to_string());
 
@@ -407,8 +407,8 @@ impl FileId {
         num
     }
 
-    fn id_to_name(&self, index: usize) -> Rc<String> {
-        self.index_to_name[index].clone()
+    fn id_to_name(&self, index: u32) -> Rc<String> {
+        self.index_to_name[index as usize].clone()
     }
 
     fn file_exists(&self, file_name: &str) -> bool {
@@ -418,7 +418,7 @@ impl FileId {
 
 #[derive(Debug)]
 pub struct Options {
-    lines: usize,
+    lines: u32,
     print: bool,
     file_globs: Vec<String>,
 }
@@ -469,7 +469,7 @@ fn main() -> Result<(), rags::Error> {
     if parser.wants_help() {
         parser.print_help();
     } else {
-        let mut collision_hashes: HashMap<u64, Vec<(usize, usize)>> = HashMap::new();
+        let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
         let mut file_hashes: Vec<Vec<u64>> = vec![];
         let mut lookup = FileId::new();
 
@@ -486,7 +486,7 @@ fn main() -> Result<(), rags::Error> {
                                         &mut collision_hashes,
                                         &mut file_hashes,
                                         &file_str_name,
-                                        opts.lines,
+                                        opts.lines as usize,
                                         &mut lookup,
                                     );
                                 }

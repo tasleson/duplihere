@@ -20,7 +20,7 @@ Developers are lazy, they don't change things :-)
 
 ```bash
 $ duplihere --help
-duplihere - 0.2.0 - find duplicate text
+duplihere - 0.5.0 - find duplicate text
 
 usage: duplihere [-p -l <number>] -f <pattern 1> <pattern n> 
 

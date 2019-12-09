@@ -5,16 +5,11 @@ extern crate rags_rs as rags;
 use glob::glob;
 use rags::argparse;
 
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::fs::canonicalize;
-use std::fs::File;
+use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
+use std::fs::{canonicalize, File};
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
-use std::iter::FromIterator;
-use std::process;
-use std::rc::Rc;
+use std::{iter::FromIterator, process, rc::Rc};
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();

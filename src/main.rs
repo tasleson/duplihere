@@ -398,7 +398,12 @@ impl FileId {
 
         self.index_to_name.push(name.clone());
         self.name_to_index.insert(name.clone(), self.num_files);
-        self.num_files += 1;
+        if let Some(v) = self.num_files.checked_add(1) {
+            self.num_files = v;
+        } else {
+            eprintln!("Number of files processed exceeds {}", u32::max_value());
+            process::exit(2);
+        }
         num
     }
 

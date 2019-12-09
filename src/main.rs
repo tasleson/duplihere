@@ -284,7 +284,7 @@ fn print_report(
             p.num_lines
         );
 
-        num_lines += (p.num_lines as usize * p.files.len()) as u64;
+        num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
 
         for spec_file in &p.files {
             let filename = lookup.id_to_name(spec_file.0);

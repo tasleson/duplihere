@@ -50,6 +50,6 @@ Very early development with a questionable algorithm and implementation,
 but it does appear to provide some useful results.  Graph of memory and CPU
 consumption while examining the Linux kernel source tree for duplicates,
 `5.2` branch which has ~`17M` lines of code.
-Chart generated with [psrecord](https://github.com/astrofrog/psrecord)
+Chart generated with [psrecord](https://github.com/astrofrog/psrecord).
 
-![duplihere_u32_c_and_h](https://user-images.githubusercontent.com/2520480/70397200-cd38c680-19d5-11ea-84d8-191ec65fa9c7.png)
+![duplihere_checked_add](https://user-images.githubusercontent.com/2520480/70479924-0a6b8a00-1aa4-11ea-8510-ad7b751070b9.png)

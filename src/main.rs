@@ -360,19 +360,19 @@ fn find_collisions(
     final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
     let mut printable_results: Vec<&Collision> = Vec::new();
-    let mut chunk_processed: HashMap<u64, bool> = HashMap::new();
 
-    for ea in final_report {
-        ea.scrub();
-        let cs = ea.signature();
-        if chunk_processed.get(&cs).is_none() {
-            chunk_processed.insert(cs, true);
-            printable_results.push(ea);
+    {
+        let mut chunk_processed: HashMap<u64, bool> = HashMap::new();
+
+        for ea in final_report {
+            ea.scrub();
+            let cs = ea.signature();
+            if chunk_processed.get(&cs).is_none() {
+                chunk_processed.insert(cs, true);
+                printable_results.push(ea);
+            }
         }
     }
-
-    chunk_processed.clear();
-    chunk_processed.shrink_to_fit();
 
     print_report(&mut printable_results, print_text, num_files, lookup);
 }

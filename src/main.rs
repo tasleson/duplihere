@@ -18,7 +18,7 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 }
 
 fn file_signatures(filename: &str) -> Vec<u64> {
-    let mut rc: Vec<u64> = Vec::with_capacity(2048);
+    let mut rc: Vec<u64> = Vec::new();
 
     match File::open(filename.to_string()) {
         Ok(file) => {

@@ -251,12 +251,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
     }
 }
 
-fn print_report(
-    printable_results: &[&Collision],
-    print_text: bool,
-    num_files: u32,
-    lookup: &FileId,
-) {
+fn print_report(printable_results: &[&Collision], print_text: bool, lookup: &FileId) {
     let mut num_lines: u64 = 0;
 
     for p in printable_results.iter() {
@@ -296,7 +291,7 @@ fn print_report(
          https://github.com/tasleson/duplihere",
         num_lines,
         printable_results.len(),
-        num_files
+        lookup.number_files(),
     )
 }
 
@@ -371,12 +366,7 @@ fn process_report(results_hash: &mut HashMap<u64, Collision>, lookup: &FileId, p
         }
     });
 
-    print_report(
-        &printable_results,
-        print_text,
-        lookup.number_files(),
-        lookup,
-    );
+    print_report(&printable_results, print_text, lookup);
 }
 
 struct FileId {

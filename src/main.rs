@@ -252,22 +252,11 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
 }
 
 fn print_report(
-    printable_results: &mut Vec<&Collision>,
+    printable_results: &[&Collision],
     print_text: bool,
     num_files: u32,
     lookup: &FileId,
 ) {
-    printable_results.sort_by(|a, b| {
-        if a.num_lines == b.num_lines {
-            if a.files[0].1 == b.files[0].1 {
-                a.files[0].0.cmp(&b.files[0].0)
-            } else {
-                a.files[0].1.cmp(&b.files[0].1)
-            }
-        } else {
-            a.num_lines.cmp(&b.num_lines)
-        }
-    });
     let mut num_lines: u64 = 0;
 
     for p in printable_results.iter() {
@@ -370,8 +359,20 @@ fn process_report(results_hash: &mut HashMap<u64, Collision>, lookup: &FileId, p
         }
     }
 
+    printable_results.sort_by(|a, b| {
+        if a.num_lines == b.num_lines {
+            if a.files[0].1 == b.files[0].1 {
+                a.files[0].0.cmp(&b.files[0].0)
+            } else {
+                a.files[0].1.cmp(&b.files[0].1)
+            }
+        } else {
+            a.num_lines.cmp(&b.num_lines)
+        }
+    });
+
     print_report(
-        &mut printable_results,
+        &printable_results,
         print_text,
         lookup.number_files(),
         lookup,

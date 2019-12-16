@@ -254,7 +254,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
 fn print_report(
     printable_results: &mut Vec<&Collision>,
     print_text: bool,
-    num_files: usize,
+    num_files: u32,
     lookup: &FileId,
 ) {
     printable_results.sort_by(|a, b| {
@@ -315,9 +315,7 @@ fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
     min_lines: u32,
-    print_text: bool,
-    lookup: &FileId,
-) {
+) -> HashMap<u64, Collision> {
     let mut results_hash: HashMap<u64, Collision> = HashMap::new();
 
     // We have processed all the files, remove entries for which we didn't have any collisions
@@ -350,12 +348,10 @@ fn find_collisions(
         }
     }
 
-    let num_files = file_hashes.len();
-    file_hashes.clear();
-    file_hashes.shrink_to_fit();
-    collision_hash.clear();
-    collision_hash.shrink_to_fit();
+    results_hash
+}
 
+fn process_report(results_hash: &mut HashMap<u64, Collision>, lookup: &FileId, print_text: bool) {
     let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
     final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
@@ -374,7 +370,12 @@ fn find_collisions(
         }
     }
 
-    print_report(&mut printable_results, print_text, num_files, lookup);
+    print_report(
+        &mut printable_results,
+        print_text,
+        lookup.number_files(),
+        lookup,
+    );
 }
 
 struct FileId {
@@ -413,6 +414,10 @@ impl FileId {
 
     fn file_exists(&self, file_name: &str) -> bool {
         self.name_to_index.contains_key(&file_name.to_string())
+    }
+
+    fn number_files(&self) -> u32 {
+        self.num_files
     }
 }
 
@@ -469,49 +474,48 @@ fn main() -> Result<(), rags::Error> {
     if parser.wants_help() {
         parser.print_help();
     } else {
-        let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
-        let mut file_hashes: Vec<Vec<u64>> = vec![];
         let mut lookup = FileId::new();
+        let mut results_hash: HashMap<u64, Collision>;
 
-        for g in opts.file_globs {
-            match glob(&g) {
-                Ok(entries) => {
-                    for filename in entries {
-                        match filename {
-                            Ok(specific_file) => {
-                                if specific_file.is_file() {
-                                    let file_str_name =
-                                        String::from(specific_file.to_str().unwrap());
-                                    process_file(
-                                        &mut collision_hashes,
-                                        &mut file_hashes,
-                                        &file_str_name,
-                                        opts.lines as usize,
-                                        &mut lookup,
-                                    );
+        {
+            let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
+            let mut file_hashes: Vec<Vec<u64>> = vec![];
+
+            for g in opts.file_globs {
+                match glob(&g) {
+                    Ok(entries) => {
+                        for filename in entries {
+                            match filename {
+                                Ok(specific_file) => {
+                                    if specific_file.is_file() {
+                                        let file_str_name =
+                                            String::from(specific_file.to_str().unwrap());
+                                        process_file(
+                                            &mut collision_hashes,
+                                            &mut file_hashes,
+                                            &file_str_name,
+                                            opts.lines as usize,
+                                            &mut lookup,
+                                        );
+                                    }
                                 }
-                            }
-                            Err(e) => {
-                                println!("Unable to process {:?}", e);
-                                process::exit(1);
+                                Err(e) => {
+                                    println!("Unable to process {:?}", e);
+                                    process::exit(1);
+                                }
                             }
                         }
                     }
-                }
-                Err(e) => {
-                    println!("Bad glob pattern supplied '{}', error: {}", g, e);
-                    process::exit(1);
+                    Err(e) => {
+                        println!("Bad glob pattern supplied '{}', error: {}", g, e);
+                        process::exit(1);
+                    }
                 }
             }
+            results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, opts.lines);
         }
 
-        find_collisions(
-            &mut collision_hashes,
-            &mut file_hashes,
-            opts.lines,
-            opts.print,
-            &lookup,
-        );
+        process_report(&mut results_hash, &lookup, opts.print);
     }
 
     Ok(())

@@ -7,6 +7,7 @@ extern crate lazy_static;
 extern crate rags_rs as rags;
 use glob::glob;
 use rags::argparse;
+use rayon::prelude::*;
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
@@ -62,12 +63,9 @@ fn file_signatures(filename: &str) -> Vec<u64> {
     rc
 }
 
-fn rolling_hashes(
-    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
-    fid: u32,
-    file_signatures: &[u64],
-    min_lines: usize,
-) {
+fn mrolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> {
+    let mut rc = vec![];
+
     if file_signatures.len() > min_lines {
         let num_lines = file_signatures.len() - min_lines;
         let mut prev_hash: u64 = 0;
@@ -79,40 +77,19 @@ fn rolling_hashes(
             let digest = s.finish();
 
             if prev_hash != digest {
-                match collision_hash.get_mut(&digest) {
-                    Some(existing) => existing.push((fid, i as u32)),
-                    None => {
-                        let mut entry: Vec<(u32, u32)> = Vec::new();
-                        entry.push((fid, i as u32));
-                        collision_hash.insert(digest, entry);
-                    }
-                }
+                rc.push((digest, i as u32));
             }
 
             prev_hash = digest;
         }
     }
+    rc
 }
 
-fn process_file(
-    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
-    file_hashes: &mut Vec<Vec<u64>>,
-    filename: &str,
-    min_lines: usize,
-) {
-    match canonicalize(filename) {
-        Ok(fn_ok) => {
-            let c_name_str = String::from(fn_ok.to_str().unwrap());
-
-            if let Some(fid) = FILE_LOOKUP.lock().unwrap().register_file(&c_name_str) {
-                file_hashes.insert(fid as usize, file_signatures(&c_name_str));
-                rolling_hashes(collision_hash, fid, &file_hashes[fid as usize], min_lines);
-            }
-        }
-        Err(e) => {
-            println!("WARNING: Unable to process file {}, reason {}", filename, e);
-        }
-    }
+fn mprocess_file(fid: u32, filename: &str, min_lines: usize) -> (u32, Vec<u64>, Vec<(u64, u32)>) {
+    let file_signatures = file_signatures(&filename);
+    let file_hashes = mrolling_hashes(&file_signatures, min_lines);
+    (fid, file_signatures, file_hashes)
 }
 
 #[derive(Debug)]
@@ -120,6 +97,7 @@ struct Collision {
     key: u64,
     num_lines: u32,
     files: Vec<(u32, u32)>,
+    sig: u64,
 }
 
 impl Serialize for Collision {
@@ -143,6 +121,10 @@ impl Serialize for Collision {
 
 impl Collision {
     fn signature(&self) -> u64 {
+        self.sig
+    }
+
+    fn _signature(&mut self) {
         let mut s = DefaultHasher::new();
 
         for i in &self.files {
@@ -152,8 +134,7 @@ impl Collision {
             let rep = format!("{}{}", end, file_n);
             rep.hash(&mut s);
         }
-
-        s.finish()
+        self.sig = s.finish();
     }
 
     // Remove overlaps for a collision result when they all refer to the same file.  This gets
@@ -192,6 +173,8 @@ impl Collision {
         });
         self.files.dedup();
         self.remove_overlap_same_file();
+
+        self._signature()
     }
 }
 
@@ -210,7 +193,7 @@ fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
 }
 
 fn walk_collision(
-    file_hashes: &mut Vec<Vec<u64>>,
+    file_hashes: &[Vec<u64>],
     l_info: (u32, u32),
     r_info: (u32, u32),
     min_lines: u32,
@@ -256,6 +239,7 @@ fn walk_collision(
         key: s.finish(),
         num_lines: offset,
         files,
+        sig: 0,
     })
 }
 
@@ -354,6 +338,31 @@ fn print_report(
     }
 }
 
+fn johnny_cash(
+    collisions: &[(u32, u32)],
+    file_hashes: &[Vec<u64>],
+    min_lines: u32,
+) -> Vec<Collision> {
+    let mut rc = Vec::new();
+
+    for l_idx in 0..(collisions.len() - 1) {
+        for r_idx in l_idx..collisions.len() {
+            let (l_file, l_start) = &collisions[l_idx];
+            let (r_file, r_start) = &collisions[r_idx];
+
+            if let Some(coll) = walk_collision(
+                file_hashes,
+                (*l_file, *l_start),
+                (*r_file, *r_start),
+                min_lines,
+            ) {
+                rc.push(coll);
+            }
+        }
+    }
+    rc
+}
+
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
@@ -366,26 +375,18 @@ fn find_collisions(
     collision_hash.retain(|_, v| v.len() > 1);
     collision_hash.shrink_to_fit();
 
-    for collisions in collision_hash.values_mut() {
-        for l_idx in 0..(collisions.len() - 1) {
-            for r_idx in l_idx..collisions.len() {
-                let (l_file, l_start) = &collisions[l_idx];
-                let (r_file, r_start) = &collisions[r_idx];
+    let collision_vec = Vec::from_iter(collision_hash.values_mut());
+    let results: Vec<Vec<Collision>> = collision_vec
+        .par_iter()
+        .map(|collisions| johnny_cash(collisions, file_hashes, opts.lines))
+        .collect();
 
-                let max_collision = walk_collision(
-                    file_hashes,
-                    (*l_file, *l_start),
-                    (*r_file, *r_start),
-                    opts.lines,
-                );
-
-                if let Some(mut coll) = max_collision {
-                    match results_hash.get_mut(&coll.key) {
-                        Some(existing) => existing.files.append(&mut coll.files),
-                        None => {
-                            results_hash.insert(coll.key, coll);
-                        }
-                    }
+    for outer in results {
+        for mut coll in outer {
+            match results_hash.get_mut(&coll.key) {
+                Some(existing) => existing.files.append(&mut coll.files),
+                None => {
+                    results_hash.insert(coll.key, coll);
                 }
             }
         }
@@ -400,15 +401,16 @@ fn process_report(
     ignore_hashes: &HashMap<u64, bool>,
 ) {
     let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
-    final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
+    final_report.par_sort_unstable_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
     let mut printable_results: Vec<&Collision> = Vec::new();
 
     {
         let mut chunk_processed: HashMap<u64, bool> = HashMap::new();
 
+        final_report.par_iter_mut().for_each(|ea| ea.scrub());
+
         for ea in final_report {
-            ea.scrub();
             let cs = ea.signature();
             if chunk_processed.get(&cs).is_none() {
                 chunk_processed.insert(cs, true);
@@ -417,7 +419,7 @@ fn process_report(
         }
     }
 
-    printable_results.sort_by(|a, b| {
+    printable_results.par_sort_unstable_by(|a, b| {
         if a.num_lines == b.num_lines {
             if a.files[0].1 == b.files[0].1 {
                 a.files[0].0.cmp(&b.files[0].0)
@@ -537,6 +539,8 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere";
 
+type FileHashEntry = (u32, Vec<u64>, Vec<(u64, u32)>);
+
 fn main() -> Result<(), rags::Error> {
     let mut opts = Options::default();
     let mut parser = argparse!();
@@ -581,7 +585,7 @@ fn main() -> Result<(), rags::Error> {
 
         {
             let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
-            let mut file_hashes: Vec<Vec<u64>> = vec![];
+            let mut files_to_process: Vec<(u32, String)> = vec![];
 
             if !opts.ignore.is_empty() {
                 ignore_hash = get_ignore_hashes(&opts.ignore);
@@ -596,12 +600,27 @@ fn main() -> Result<(), rags::Error> {
                                     if specific_file.is_file() {
                                         let file_str_name =
                                             String::from(specific_file.to_str().unwrap());
-                                        process_file(
-                                            &mut collision_hashes,
-                                            &mut file_hashes,
-                                            &file_str_name,
-                                            opts.lines as usize,
-                                        );
+
+                                        match canonicalize(file_str_name.clone()) {
+                                            Ok(fn_ok) => {
+                                                let c_name_str =
+                                                    String::from(fn_ok.to_str().unwrap());
+
+                                                if let Some(fid) = FILE_LOOKUP
+                                                    .lock()
+                                                    .unwrap()
+                                                    .register_file(&c_name_str)
+                                                {
+                                                    files_to_process.push((fid, c_name_str));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!(
+                                                    "WARNING: Unable to process file {}, reason {}",
+                                                    file_str_name, e
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                                 Err(e) => {
@@ -617,6 +636,35 @@ fn main() -> Result<(), rags::Error> {
                     }
                 }
             }
+
+            let hash_data: Vec<FileHashEntry> = files_to_process
+                .par_iter()
+                .map(|e| mprocess_file(e.0, &e.1, opts.lines as usize))
+                .collect();
+
+            let mut file_hashes: Vec<Vec<u64>> = Vec::with_capacity(hash_data.len());
+
+            // Choke point, take hash data and build the collision_hashes, we could try to use
+            // a mutex and create a lot of lock contention on the collision hash in the
+            // mprocess_file instead.
+            for file_hash in hash_data {
+                let (fid, file_line_hashes, rolling_hashes) = file_hash;
+
+                file_hashes.insert(fid as usize, file_line_hashes);
+
+                for e in rolling_hashes {
+                    let (r_hash, line_number) = e;
+                    match collision_hashes.get_mut(&r_hash) {
+                        Some(existing) => existing.push((fid, line_number)),
+                        None => {
+                            let mut entry: Vec<(u32, u32)> = Vec::new();
+                            entry.push((fid, line_number));
+                            collision_hashes.insert(r_hash, entry);
+                        }
+                    }
+                }
+            }
+
             results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, &opts);
         }
 

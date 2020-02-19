@@ -454,10 +454,11 @@ fn main() -> Result<(), rags::Error> {
         )?
         .list(
             'f',
-            "files",
-            "1 or more file pattern(s), eg. \"**/*.[h|c]\" \"*.py\"",
+            "file",
+            "pattern or file eg. \"**/*.[h|c]\" recursive, \"*.py\", \
+            \"file.ext\", can repeat",
             &mut opts.file_globs,
-            Some("<pattern 1> <pattern n>"),
+            Some("<pattern or specific file>"),
             true,
         )?
         .done()?;

@@ -20,9 +20,9 @@ Developers are lazy, they don't change things :-)
 
 ```bash
 $ duplihere --help
-duplihere - 0.5.0 - find duplicate text
+duplihere - 0.5.1 - find duplicate text
 
-usage: duplihere [-p -l <number>] -f <pattern 1> <pattern n> 
+usage: duplihere [-p -l <number>] -f <pattern or specific file>
 
 Find duplicate lines of text in one or more text files.
 
@@ -31,16 +31,17 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere
 
-argument:                                      description
-    -p, --print                                print duplicate text [default: false]
-    -l, --lines <number>                       minimum number of duplicate lines [default: 6]
-    -f, --files <pattern 1> <pattern n>        1 or more file pattern(s), eg. "**/*.[h|c]" "*.py" [required]
+argument:                                        description
+    -p, --print                                  print duplicate text [default: false]
+    -l, --lines <number>                         minimum number of duplicate lines [default: 6]
+    -f, --file <pattern or specific file>        pattern or file eg. "**/*.[h|c]" recursive, "*.py", "file.ext", can repeat [required]
 
 ```
 
-An example ...
+An example where we recurse in a directory for python files and a directory
+that contains python files ...
 ```bash
-$ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' '/tmp/*.py'
+$ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' -f '/tmp/*.py'
 ```
 
 

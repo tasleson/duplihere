@@ -389,7 +389,7 @@ impl FileId {
         let name = Rc::new(file_name.to_string());
 
         self.index_to_name.push(name.clone());
-        self.name_to_index.insert(name.clone(), self.num_files);
+        self.name_to_index.insert(name, self.num_files);
         if let Some(v) = self.num_files.checked_add(1) {
             self.num_files = v;
         } else {

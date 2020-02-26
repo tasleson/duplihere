@@ -279,11 +279,8 @@ fn print_report(
 
             if !opts.json {
                 println!(
-                "********************************************************************************"
-            );
-                println!(
-                    "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
-                    p.key, p.num_lines
+                    "{}\nHash signature = {}\nFound {} copy & pasted lines in the following files:",
+                    "*".repeat(80), p.key, p.num_lines
                 );
 
                 for spec_file in &p.files {

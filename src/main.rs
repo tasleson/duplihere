@@ -497,6 +497,7 @@ impl FileId {
 pub struct Options {
     lines: u32,
     print: bool,
+    json: bool,
     file_globs: Vec<String>,
     ignore: String,
 }
@@ -506,6 +507,7 @@ impl Default for Options {
         Options {
             lines: 6,
             print: false,
+            json: false,
             file_globs: vec![],
             ignore: "".to_string(),
         }
@@ -527,6 +529,7 @@ fn main() -> Result<(), rags::Error> {
         .app_long_desc(LONG_DESC)
         .group("argument", "description")?
         .flag('p', "print", "print duplicate text", &mut opts.print, false)?
+        .flag('j', "json", "output JSON", &mut opts.json, false)?
         .arg(
             'l',
             "lines",

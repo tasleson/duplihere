@@ -275,47 +275,60 @@ fn print_report(
         if ignore_hashes.contains_key(&p.key) {
             ignored += 1;
         } else {
-            //eprintln!("{}", p.key);
-            println!(
+            if !opts.json {
+                println!(
                 "********************************************************************************"
             );
-            println!(
-                "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
-                p.key, p.num_lines
-            );
-
-            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
-
-            for spec_file in &p.files {
-                let filename = lookup.id_to_name(spec_file.0);
-                let start_line = spec_file.1;
-                let end_line = start_line + 1 + p.num_lines;
                 println!(
-                    "Between lines {} and {} in {}",
-                    start_line + 1,
-                    end_line,
-                    filename
+                    "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
+                    p.key, p.num_lines
                 );
             }
 
-            if opts.print {
-                print_dup_text(
-                    lookup.id_to_name(p.files[0usize].0).as_str(),
-                    p.files[0usize].1 as usize,
-                    p.num_lines as usize,
-                );
+            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
+
+            if !opts.json {
+                for spec_file in &p.files {
+                    let filename = lookup.id_to_name(spec_file.0);
+                    let start_line = spec_file.1;
+                    let end_line = start_line + 1 + p.num_lines;
+                    println!(
+                        "Between lines {} and {} in {}",
+                        start_line + 1,
+                        end_line,
+                        filename
+                    );
+                }
+
+                if !opts.print {
+                    print_dup_text(
+                        lookup.id_to_name(p.files[0usize].0).as_str(),
+                        p.files[0usize].1 as usize,
+                        p.num_lines as usize,
+                    );
+                }
             }
         }
     }
 
-    println!(
-        "Found {} duplicate lines in {} chunks in {} files, {} chunks ignored.\n\
+    if !opts.json {
+        println!(
+            "Found {} duplicate lines in {} chunks in {} files, {} chunks ignored.\n\
          https://github.com/tasleson/duplihere",
-        num_lines,
-        printable_results.len() - ignored as usize,
-        lookup.number_files(),
-        ignored
-    )
+            num_lines,
+            printable_results.len() - ignored as usize,
+            lookup.number_files(),
+            ignored
+        )
+    } else {
+        let r = ReportResults {
+            num_lines,
+            num_ignored: ignored,
+            mappings: &lookup,
+            duplicates: printable_results,
+        };
+        println!("{}", serde_json::to_string_pretty(&r).unwrap());
+    }
 }
 
 fn find_collisions(
@@ -397,10 +410,10 @@ fn process_report(
     print_report(&printable_results, &opts, lookup, &ignore_hashes);
 }
 
-fn get_ignore_hashes(file_name: &String) -> HashMap<u64, bool> {
+fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
     let mut ignores: HashMap<u64, bool> = HashMap::new();
 
-    let fh = File::open(file_name.clone());
+    let fh = File::open(file_name.to_string());
 
     match fh {
         Ok(fh) => {

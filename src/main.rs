@@ -453,11 +453,11 @@ impl Serialize for FileId {
     where
         S: Serializer,
     {
-        let mut index_name: Vec<String> = Vec::new();
-
-        for i in &self.index_to_name {
-            index_name.push(i.as_str().to_string());
-        }
+        let index_name: Vec<String> = self
+            .index_to_name
+            .iter()
+            .map(|i| i.as_str().to_string())
+            .collect();
 
         let mut fid = serializer.serialize_struct("FileId", 3)?;
         fid.serialize_field("num_files", &self.num_files)?;

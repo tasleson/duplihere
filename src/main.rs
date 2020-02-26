@@ -259,8 +259,8 @@ fn print_report(printable_results: &[&Collision], print_text: bool, lookup: &Fil
             "********************************************************************************"
         );
         println!(
-            "Found {} copy & pasted lines in the following files:",
-            p.num_lines
+            "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
+            p.key, p.num_lines
         );
 
         num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;

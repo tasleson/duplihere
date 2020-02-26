@@ -275,6 +275,8 @@ fn print_report(
         if ignore_hashes.contains_key(&p.key) {
             ignored += 1;
         } else {
+            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
+
             if !opts.json {
                 println!(
                 "********************************************************************************"
@@ -283,11 +285,7 @@ fn print_report(
                     "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
                     p.key, p.num_lines
                 );
-            }
 
-            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
-
-            if !opts.json {
                 for spec_file in &p.files {
                     let filename = lookup.id_to_name(spec_file.0);
                     let start_line = spec_file.1;

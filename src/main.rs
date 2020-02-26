@@ -251,47 +251,59 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
     }
 }
 
-fn print_report(printable_results: &[&Collision], print_text: bool, lookup: &FileId) {
+fn print_report(
+    printable_results: &[&Collision],
+    print_text: bool,
+    lookup: &FileId,
+    ignore_hashes: &HashMap<u64, bool>,
+) {
     let mut num_lines: u64 = 0;
+    let mut ignored: u64 = 0;
 
     for p in printable_results.iter() {
-        println!(
-            "********************************************************************************"
-        );
-        println!(
-            "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
-            p.key, p.num_lines
-        );
-
-        num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
-
-        for spec_file in &p.files {
-            let filename = lookup.id_to_name(spec_file.0);
-            let start_line = spec_file.1;
-            let end_line = start_line + 1 + p.num_lines;
+        if ignore_hashes.contains_key(&p.key) {
+            ignored += 1;
+        } else {
+            //eprintln!("{}", p.key);
             println!(
-                "Between lines {} and {} in {}",
-                start_line + 1,
-                end_line,
-                filename
+                "********************************************************************************"
             );
-        }
+            println!(
+                "Hash signature = {}\nFound {} copy & pasted lines in the following files:",
+                p.key, p.num_lines
+            );
 
-        if print_text {
-            print_dup_text(
-                lookup.id_to_name(p.files[0usize].0).as_str(),
-                p.files[0usize].1 as usize,
-                p.num_lines as usize,
-            );
+            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
+
+            for spec_file in &p.files {
+                let filename = lookup.id_to_name(spec_file.0);
+                let start_line = spec_file.1;
+                let end_line = start_line + 1 + p.num_lines;
+                println!(
+                    "Between lines {} and {} in {}",
+                    start_line + 1,
+                    end_line,
+                    filename
+                );
+            }
+
+            if print_text {
+                print_dup_text(
+                    lookup.id_to_name(p.files[0usize].0).as_str(),
+                    p.files[0usize].1 as usize,
+                    p.num_lines as usize,
+                );
+            }
         }
     }
 
     println!(
-        "Found {} duplicate lines in {} chunks in {} files.\n\
+        "Found {} duplicate lines in {} chunks in {} files, {} chunks ignored.\n\
          https://github.com/tasleson/duplihere",
         num_lines,
-        printable_results.len(),
+        printable_results.len() - ignored as usize,
         lookup.number_files(),
+        ignored
     )
 }
 
@@ -335,7 +347,12 @@ fn find_collisions(
     results_hash
 }
 
-fn process_report(results_hash: &mut HashMap<u64, Collision>, lookup: &FileId, print_text: bool) {
+fn process_report(
+    results_hash: &mut HashMap<u64, Collision>,
+    lookup: &FileId,
+    print_text: bool,
+    ignore_hashes: &HashMap<u64, bool>,
+) {
     let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
     final_report.sort_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
@@ -366,7 +383,41 @@ fn process_report(results_hash: &mut HashMap<u64, Collision>, lookup: &FileId, p
         }
     });
 
-    print_report(&printable_results, print_text, lookup);
+    print_report(&printable_results, print_text, lookup, &ignore_hashes);
+}
+
+fn get_ignore_hashes(file_name: String) -> HashMap<u64, bool> {
+    let mut ignores: HashMap<u64, bool> = HashMap::new();
+
+    let fh = File::open(file_name.clone());
+
+    match fh {
+        Ok(fh) => {
+            let buf = BufReader::new(fh);
+
+            for line in buf.lines() {
+                let t = line.unwrap();
+                let l = t.trim();
+
+                if !l.is_empty() && !l.starts_with('#') {
+                    if let Ok(hv) = l.parse::<u64>() {
+                        ignores.insert(hv, true);
+                    } else {
+                        println!("WARNING: Ignore file contains invalid hash value \"{}\"", l);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Unable to open supplied ignore file {}, reason: {}",
+                file_name, e
+            );
+            process::exit(2);
+        }
+    }
+
+    ignores
 }
 
 struct FileId {
@@ -417,6 +468,7 @@ pub struct Options {
     lines: u32,
     print: bool,
     file_globs: Vec<String>,
+    ignore: String,
 }
 
 impl Default for Options {
@@ -425,6 +477,7 @@ impl Default for Options {
             lines: 6,
             print: false,
             file_globs: vec![],
+            ignore: "".to_string(),
         }
     }
 }
@@ -461,6 +514,14 @@ fn main() -> Result<(), rags::Error> {
             Some("<pattern or specific file>"),
             true,
         )?
+        .arg(
+            'i',
+            "ignore",
+            "file containing hash values to ignore, one per line",
+            &mut opts.ignore,
+            Some("<file name>"),
+            false,
+        )?
         .done()?;
 
     if parser.wants_help() {
@@ -468,10 +529,15 @@ fn main() -> Result<(), rags::Error> {
     } else {
         let mut lookup = FileId::new();
         let mut results_hash: HashMap<u64, Collision>;
+        let mut ignore_hash: HashMap<u64, bool> = HashMap::new();
 
         {
             let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
             let mut file_hashes: Vec<Vec<u64>> = vec![];
+
+            if !opts.ignore.is_empty() {
+                ignore_hash = get_ignore_hashes(opts.ignore);
+            }
 
             for g in opts.file_globs {
                 match glob(&g) {
@@ -507,7 +573,7 @@ fn main() -> Result<(), rags::Error> {
             results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, opts.lines);
         }
 
-        process_report(&mut results_hash, &lookup, opts.print);
+        process_report(&mut results_hash, &lookup, opts.print, &ignore_hash);
     }
 
     Ok(())

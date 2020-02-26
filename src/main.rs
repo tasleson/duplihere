@@ -5,6 +5,9 @@ extern crate rags_rs as rags;
 use glob::glob;
 use rags::argparse;
 
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
+
 use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
 use std::fs::{canonicalize, File};
 use std::hash::{Hash, Hasher};
@@ -106,7 +109,7 @@ fn process_file(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Collision {
     key: u64,
     num_lines: u32,
@@ -165,6 +168,14 @@ impl Collision {
         self.files.dedup();
         self.remove_overlap_same_file();
     }
+}
+
+#[derive(Debug, Serialize)]
+struct ReportResults<'a> {
+    num_lines: u64,
+    num_ignored: u64,
+    mappings: &'a FileId,
+    duplicates: &'a [&'a Collision],
 }
 
 fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
@@ -420,10 +431,29 @@ fn get_ignore_hashes(file_name: String) -> HashMap<u64, bool> {
     ignores
 }
 
+#[derive(Debug)]
 struct FileId {
     num_files: u32,
     index_to_name: Vec<Rc<String>>,
     name_to_index: HashMap<Rc<String>, u32>,
+}
+
+impl Serialize for FileId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut index_name: Vec<String> = Vec::new();
+
+        for i in &self.index_to_name {
+            index_name.push(i.as_str().to_string());
+        }
+
+        let mut fid = serializer.serialize_struct("FileId", 3)?;
+        fid.serialize_field("num_files", &self.num_files)?;
+        fid.serialize_field("index_to_name", &index_name)?;
+        fid.end()
+    }
 }
 
 impl FileId {

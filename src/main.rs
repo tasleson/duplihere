@@ -264,7 +264,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
 
 fn print_report(
     printable_results: &[&Collision],
-    print_text: bool,
+    opts: &Options,
     lookup: &FileId,
     ignore_hashes: &HashMap<u64, bool>,
 ) {
@@ -298,7 +298,7 @@ fn print_report(
                 );
             }
 
-            if print_text {
+            if opts.print {
                 print_dup_text(
                     lookup.id_to_name(p.files[0usize].0).as_str(),
                     p.files[0usize].1 as usize,
@@ -321,7 +321,7 @@ fn print_report(
 fn find_collisions(
     collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
-    min_lines: u32,
+    opts: &Options,
 ) -> HashMap<u64, Collision> {
     let mut results_hash: HashMap<u64, Collision> = HashMap::new();
 
@@ -340,7 +340,7 @@ fn find_collisions(
                     file_hashes,
                     (*l_file, *l_start),
                     (*r_file, *r_start),
-                    min_lines,
+                    opts.lines,
                 );
 
                 if let Some(mut coll) = max_collision {
@@ -361,7 +361,7 @@ fn find_collisions(
 fn process_report(
     results_hash: &mut HashMap<u64, Collision>,
     lookup: &FileId,
-    print_text: bool,
+    opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
 ) {
     let mut final_report: Vec<&mut Collision> = Vec::from_iter(results_hash.values_mut());
@@ -394,10 +394,10 @@ fn process_report(
         }
     });
 
-    print_report(&printable_results, print_text, lookup, &ignore_hashes);
+    print_report(&printable_results, &opts, lookup, &ignore_hashes);
 }
 
-fn get_ignore_hashes(file_name: String) -> HashMap<u64, bool> {
+fn get_ignore_hashes(file_name: &String) -> HashMap<u64, bool> {
     let mut ignores: HashMap<u64, bool> = HashMap::new();
 
     let fh = File::open(file_name.clone());
@@ -569,10 +569,10 @@ fn main() -> Result<(), rags::Error> {
             let mut file_hashes: Vec<Vec<u64>> = vec![];
 
             if !opts.ignore.is_empty() {
-                ignore_hash = get_ignore_hashes(opts.ignore);
+                ignore_hash = get_ignore_hashes(&opts.ignore);
             }
 
-            for g in opts.file_globs {
+            for g in &opts.file_globs {
                 match glob(&g) {
                     Ok(entries) => {
                         for filename in entries {
@@ -603,10 +603,10 @@ fn main() -> Result<(), rags::Error> {
                     }
                 }
             }
-            results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, opts.lines);
+            results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, &opts);
         }
 
-        process_report(&mut results_hash, &lookup, opts.print, &ignore_hash);
+        process_report(&mut results_hash, &lookup, &opts, &ignore_hash);
     }
 
     Ok(())

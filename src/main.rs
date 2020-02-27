@@ -116,11 +116,30 @@ fn process_file(
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct Collision {
     key: u64,
     num_lines: u32,
     files: Vec<(u32, u32)>,
+}
+
+impl Serialize for Collision {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let files_infos: Vec<(String, u32)> = self
+            .files
+            .iter()
+            .map(|i| (FILE_LOOKUP.lock().unwrap().id_to_name(i.0).to_string(), i.1))
+            .collect();
+
+        let mut fid = serializer.serialize_struct("Collision", 3)?;
+        fid.serialize_field("key", &self.key)?;
+        fid.serialize_field("num_lines", &self.num_lines)?;
+        fid.serialize_field("files", &files_infos)?;
+        fid.end()
+    }
 }
 
 impl Collision {
@@ -453,24 +472,6 @@ struct FileId {
     num_files: u32,
     index_to_name: Vec<Arc<String>>,
     name_to_index: HashMap<Arc<String>, u32>,
-}
-
-impl Serialize for FileId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let index_name: Vec<String> = self
-            .index_to_name
-            .iter()
-            .map(|i| i.as_str().to_string())
-            .collect();
-
-        let mut fid = serializer.serialize_struct("FileId", 3)?;
-        fid.serialize_field("num_files", &self.num_files)?;
-        fid.serialize_field("index_to_name", &index_name)?;
-        fid.end()
-    }
 }
 
 impl FileId {

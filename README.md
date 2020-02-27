@@ -19,10 +19,9 @@ Developers are lazy, they don't change things :-)
 ### How to use
 
 ```bash
-$ duplihere --help
-duplihere - 0.5.1 - find duplicate text
+duplihere - 0.7.0 - find duplicate text
 
-usage: duplihere [-p -l <number>] -f <pattern or specific file>
+usage: duplihere [-pj -l <number> -i <file name>] -f <pattern or specific file>
 
 Find duplicate lines of text in one or more text files.
 
@@ -33,8 +32,10 @@ More information: https://github.com/tasleson/duplihere
 
 argument:                                        description
     -p, --print                                  print duplicate text [default: false]
+    -j, --json                                   output JSON [default: false]
     -l, --lines <number>                         minimum number of duplicate lines [default: 6]
     -f, --file <pattern or specific file>        pattern or file eg. "**/*.[h|c]" recursive, "*.py", "file.ext", can repeat [required]
+    -i, --ignore <file name>                     file containing hash values to ignore, one per line
 
 ```
 

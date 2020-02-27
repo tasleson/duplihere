@@ -48,7 +48,7 @@ $ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' -f '/tmp/*.py'
 An example showing JSON output (not finalized)
 
 ```bash
-$ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j`
+$ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j
 ```
 
 ```json

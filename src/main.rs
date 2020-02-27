@@ -321,7 +321,7 @@ fn print_report(
                     );
                 }
 
-                if !opts.print {
+                if opts.print {
                     print_dup_text(
                         FILE_LOOKUP
                             .lock()

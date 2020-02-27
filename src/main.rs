@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
 // Copyright (C) 2019 Tony Asleson <tony.asleson@gmail.com>
+#[macro_use]
+extern crate lazy_static;
+
 extern crate rags_rs as rags;
 use glob::glob;
 use rags::argparse;
@@ -12,7 +15,12 @@ use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
 use std::fs::{canonicalize, File};
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
-use std::{iter::FromIterator, process, rc::Rc};
+use std::sync::{Arc, Mutex};
+use std::{iter::FromIterator, process};
+
+lazy_static! {
+    static ref FILE_LOOKUP: Mutex<FileId> = Mutex::new(FileId::new());
+}
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -91,14 +99,13 @@ fn process_file(
     file_hashes: &mut Vec<Vec<u64>>,
     filename: &str,
     min_lines: usize,
-    lookup: &mut FileId,
 ) {
     match canonicalize(filename) {
         Ok(fn_ok) => {
             let c_name_str = String::from(fn_ok.to_str().unwrap());
 
-            if !lookup.file_exists(&c_name_str) {
-                let fid = lookup.register_file(&c_name_str);
+            if !FILE_LOOKUP.lock().unwrap().file_exists(&c_name_str) {
+                let fid = FILE_LOOKUP.lock().unwrap().register_file(&c_name_str);
                 file_hashes.insert(fid as usize, file_signatures(&c_name_str));
                 rolling_hashes(collision_hash, fid, &file_hashes[fid as usize], min_lines);
             }
@@ -174,7 +181,6 @@ impl Collision {
 struct ReportResults<'a> {
     num_lines: u64,
     num_ignored: u64,
-    mappings: &'a FileId,
     duplicates: &'a [&'a Collision],
 }
 
@@ -265,7 +271,6 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
 fn print_report(
     printable_results: &[&Collision],
     opts: &Options,
-    lookup: &FileId,
     ignore_hashes: &HashMap<u64, bool>,
 ) {
     let mut num_lines: u64 = 0;
@@ -286,7 +291,7 @@ fn print_report(
                 );
 
                 for spec_file in &p.files {
-                    let filename = lookup.id_to_name(spec_file.0);
+                    let filename = FILE_LOOKUP.lock().unwrap().id_to_name(spec_file.0);
                     let start_line = spec_file.1;
                     let end_line = start_line + 1 + p.num_lines;
                     println!(
@@ -299,7 +304,11 @@ fn print_report(
 
                 if !opts.print {
                     print_dup_text(
-                        lookup.id_to_name(p.files[0usize].0).as_str(),
+                        FILE_LOOKUP
+                            .lock()
+                            .unwrap()
+                            .id_to_name(p.files[0usize].0)
+                            .as_str(),
                         p.files[0usize].1 as usize,
                         p.num_lines as usize,
                     );
@@ -314,14 +323,13 @@ fn print_report(
          https://github.com/tasleson/duplihere",
             num_lines,
             printable_results.len() - ignored as usize,
-            lookup.number_files(),
+            FILE_LOOKUP.lock().unwrap().number_files(),
             ignored
         )
     } else {
         let r = ReportResults {
             num_lines,
             num_ignored: ignored,
-            mappings: &lookup,
             duplicates: printable_results,
         };
         println!("{}", serde_json::to_string_pretty(&r).unwrap());
@@ -370,7 +378,6 @@ fn find_collisions(
 
 fn process_report(
     results_hash: &mut HashMap<u64, Collision>,
-    lookup: &FileId,
     opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
 ) {
@@ -404,7 +411,7 @@ fn process_report(
         }
     });
 
-    print_report(&printable_results, &opts, lookup, &ignore_hashes);
+    print_report(&printable_results, &opts, &ignore_hashes);
 }
 
 fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
@@ -444,8 +451,8 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
 #[derive(Debug)]
 struct FileId {
     num_files: u32,
-    index_to_name: Vec<Rc<String>>,
-    name_to_index: HashMap<Rc<String>, u32>,
+    index_to_name: Vec<Arc<String>>,
+    name_to_index: HashMap<Arc<String>, u32>,
 }
 
 impl Serialize for FileId {
@@ -477,7 +484,7 @@ impl FileId {
 
     fn register_file(&mut self, file_name: &str) -> u32 {
         let num = self.num_files;
-        let name = Rc::new(file_name.to_string());
+        let name = Arc::new(file_name.to_string());
 
         self.index_to_name.push(name.clone());
         self.name_to_index.insert(name, self.num_files);
@@ -490,7 +497,7 @@ impl FileId {
         num
     }
 
-    fn id_to_name(&self, index: u32) -> Rc<String> {
+    fn id_to_name(&self, index: u32) -> Arc<String> {
         self.index_to_name[index as usize].clone()
     }
 
@@ -570,7 +577,6 @@ fn main() -> Result<(), rags::Error> {
     if parser.wants_help() {
         parser.print_help();
     } else {
-        let mut lookup = FileId::new();
         let mut results_hash: HashMap<u64, Collision>;
         let mut ignore_hash: HashMap<u64, bool> = HashMap::new();
 
@@ -596,7 +602,6 @@ fn main() -> Result<(), rags::Error> {
                                             &mut file_hashes,
                                             &file_str_name,
                                             opts.lines as usize,
-                                            &mut lookup,
                                         );
                                     }
                                 }
@@ -616,7 +621,7 @@ fn main() -> Result<(), rags::Error> {
             results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, &opts);
         }
 
-        process_report(&mut results_hash, &lookup, &opts, &ignore_hash);
+        process_report(&mut results_hash, &opts, &ignore_hash);
     }
 
     Ok(())

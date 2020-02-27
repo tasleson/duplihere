@@ -339,7 +339,7 @@ fn print_report(
     if !opts.json {
         println!(
             "Found {} duplicate lines in {} chunks in {} files, {} chunks ignored.\n\
-         https://github.com/tasleson/duplihere",
+            https://github.com/tasleson/duplihere",
             num_lines,
             printable_results.len() - ignored as usize,
             FILE_LOOKUP.lock().unwrap().number_files(),

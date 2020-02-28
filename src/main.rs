@@ -104,8 +104,7 @@ fn process_file(
         Ok(fn_ok) => {
             let c_name_str = String::from(fn_ok.to_str().unwrap());
 
-            if !FILE_LOOKUP.lock().unwrap().file_exists(&c_name_str) {
-                let fid = FILE_LOOKUP.lock().unwrap().register_file(&c_name_str);
+            if let Some(fid) = FILE_LOOKUP.lock().unwrap().register_file(&c_name_str) {
                 file_hashes.insert(fid as usize, file_signatures(&c_name_str));
                 rolling_hashes(collision_hash, fid, &file_hashes[fid as usize], min_lines);
             }
@@ -483,7 +482,10 @@ impl FileId {
         }
     }
 
-    fn register_file(&mut self, file_name: &str) -> u32 {
+    fn register_file(&mut self, file_name: &str) -> Option<u32> {
+        if self.name_to_index.contains_key(&file_name.to_string()) {
+            return None;
+        }
         let num = self.num_files;
         let name = Arc::new(file_name.to_string());
 
@@ -495,15 +497,11 @@ impl FileId {
             eprintln!("Number of files processed exceeds {}", u32::max_value());
             process::exit(2);
         }
-        num
+        Some(num)
     }
 
     fn id_to_name(&self, index: u32) -> Arc<String> {
         self.index_to_name[index as usize].clone()
-    }
-
-    fn file_exists(&self, file_name: &str) -> bool {
-        self.name_to_index.contains_key(&file_name.to_string())
     }
 
     fn number_files(&self) -> u32 {

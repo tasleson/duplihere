@@ -86,10 +86,33 @@ fn mrolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)>
     rc
 }
 
-fn mprocess_file(fid: u32, filename: &str, min_lines: usize) -> (u32, Vec<u64>, Vec<(u64, u32)>) {
+fn mprocess_file(
+    fid: u32,
+    filename: &str,
+    min_lines: usize,
+    file_hashes: &Mutex<Vec<Vec<u64>>>,
+    collision_hashes: &Mutex<HashMap<u64, Vec<(u32, u32)>>>,
+) {
     let file_signatures = file_signatures(&filename);
-    let file_hashes = mrolling_hashes(&file_signatures, min_lines);
-    (fid, file_signatures, file_hashes)
+    let file_rolling_hashes = mrolling_hashes(&file_signatures, min_lines);
+
+    file_hashes.lock().unwrap()[fid as usize] = file_signatures;
+
+    {
+        let mut hash_locked = collision_hashes.lock().unwrap();
+
+        for e in file_rolling_hashes {
+            let (r_hash, line_number) = e;
+            match hash_locked.get_mut(&r_hash) {
+                Some(existing) => existing.push((fid, line_number)),
+                None => {
+                    let mut entry: Vec<(u32, u32)> = Vec::new();
+                    entry.push((fid, line_number));
+                    hash_locked.insert(r_hash, entry);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -539,8 +562,6 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere";
 
-type FileHashEntry = (u32, Vec<u64>, Vec<(u64, u32)>);
-
 fn main() -> Result<(), rags::Error> {
     let mut opts = Options::default();
     let mut parser = argparse!();
@@ -584,7 +605,6 @@ fn main() -> Result<(), rags::Error> {
         let mut ignore_hash: HashMap<u64, bool> = HashMap::new();
 
         {
-            let mut collision_hashes: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
             let mut files_to_process: Vec<(u32, String)> = vec![];
 
             if !opts.ignore.is_empty() {
@@ -637,35 +657,25 @@ fn main() -> Result<(), rags::Error> {
                 }
             }
 
-            let hash_data: Vec<FileHashEntry> = files_to_process
-                .par_iter()
-                .map(|e| mprocess_file(e.0, &e.1, opts.lines as usize))
-                .collect();
+            let collision_hashes: Mutex<HashMap<u64, Vec<(u32, u32)>>> = Mutex::new(HashMap::new());
+            let file_hashes: Mutex<Vec<Vec<u64>>> =
+                Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
 
-            let mut file_hashes: Vec<Vec<u64>> = Vec::with_capacity(hash_data.len());
+            files_to_process.par_iter().for_each(|e| {
+                mprocess_file(
+                    e.0,
+                    &e.1,
+                    opts.lines as usize,
+                    &file_hashes,
+                    &collision_hashes,
+                )
+            });
 
-            // Choke point, take hash data and build the collision_hashes, we could try to use
-            // a mutex and create a lot of lock contention on the collision hash in the
-            // mprocess_file instead.
-            for file_hash in hash_data {
-                let (fid, file_line_hashes, rolling_hashes) = file_hash;
-
-                file_hashes.insert(fid as usize, file_line_hashes);
-
-                for e in rolling_hashes {
-                    let (r_hash, line_number) = e;
-                    match collision_hashes.get_mut(&r_hash) {
-                        Some(existing) => existing.push((fid, line_number)),
-                        None => {
-                            let mut entry: Vec<(u32, u32)> = Vec::new();
-                            entry.push((fid, line_number));
-                            collision_hashes.insert(r_hash, entry);
-                        }
-                    }
-                }
-            }
-
-            results_hash = find_collisions(&mut collision_hashes, &mut file_hashes, &opts);
+            results_hash = find_collisions(
+                &mut collision_hashes.lock().unwrap(),
+                &mut file_hashes.lock().unwrap(),
+                &opts,
+            );
         }
 
         process_report(&mut results_hash, &opts, &ignore_hash);

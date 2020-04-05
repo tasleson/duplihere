@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+extern crate dashmap;
 extern crate rags_rs as rags;
 use glob::glob;
 use rags::argparse;
@@ -18,6 +19,8 @@ use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
 use std::sync::{Arc, Mutex};
 use std::{iter::FromIterator, process};
+
+use dashmap::DashMap;
 
 lazy_static! {
     static ref FILE_LOOKUP: Mutex<FileId> = Mutex::new(FileId::new());
@@ -91,7 +94,7 @@ fn mprocess_file(
     filename: &str,
     min_lines: usize,
     file_hashes: &Mutex<Vec<Vec<u64>>>,
-    collision_hashes: &Mutex<HashMap<u64, Vec<(u32, u32)>>>,
+    collision_hashes: &DashMap<u64, Vec<(u32, u32)>>,
 ) {
     let file_signatures = file_signatures(&filename);
     let file_rolling_hashes = mrolling_hashes(&file_signatures, min_lines);
@@ -99,16 +102,14 @@ fn mprocess_file(
     file_hashes.lock().unwrap()[fid as usize] = file_signatures;
 
     {
-        let mut hash_locked = collision_hashes.lock().unwrap();
-
         for e in file_rolling_hashes {
             let (r_hash, line_number) = e;
-            match hash_locked.get_mut(&r_hash) {
-                Some(existing) => existing.push((fid, line_number)),
+            match collision_hashes.get_mut(&r_hash) {
+                Some(mut existing) => existing.push((fid, line_number)),
                 None => {
                     let mut entry: Vec<(u32, u32)> = Vec::new();
                     entry.push((fid, line_number));
-                    hash_locked.insert(r_hash, entry);
+                    collision_hashes.insert(r_hash, entry);
                 }
             }
         }
@@ -387,7 +388,7 @@ fn johnny_cash(
 }
 
 fn find_collisions(
-    collision_hash: &mut HashMap<u64, Vec<(u32, u32)>>,
+    collision_hash: DashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
     opts: &Options,
 ) -> HashMap<u64, Collision> {
@@ -395,10 +396,17 @@ fn find_collisions(
 
     // We have processed all the files, remove entries for which we didn't have any collisions
     // to reduce memory consumption
-    collision_hash.retain(|_, v| v.len() > 1);
-    collision_hash.shrink_to_fit();
+    //collision_hash.retain(|_, v| v.len() > 1);
+    //collision_hash.shrink_to_fit();
 
-    let collision_vec = Vec::from_iter(collision_hash.values_mut());
+    let mut collision_vec = Vec::with_capacity(collision_hash.len());
+
+    for (_, v) in collision_hash.into_iter() {
+        if v.len() > 1 {
+            collision_vec.push(v);
+        }
+    }
+
     let results: Vec<Vec<Collision>> = collision_vec
         .par_iter()
         .map(|collisions| johnny_cash(collisions, file_hashes, opts.lines))
@@ -657,7 +665,7 @@ fn main() -> Result<(), rags::Error> {
                 }
             }
 
-            let collision_hashes: Mutex<HashMap<u64, Vec<(u32, u32)>>> = Mutex::new(HashMap::new());
+            let collision_hashes: DashMap<u64, Vec<(u32, u32)>> = DashMap::new();
             let file_hashes: Mutex<Vec<Vec<u64>>> =
                 Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
 
@@ -671,11 +679,8 @@ fn main() -> Result<(), rags::Error> {
                 )
             });
 
-            results_hash = find_collisions(
-                &mut collision_hashes.lock().unwrap(),
-                &mut file_hashes.lock().unwrap(),
-                &opts,
-            );
+            results_hash =
+                find_collisions(collision_hashes, &mut file_hashes.lock().unwrap(), &opts);
         }
 
         process_report(&mut results_hash, &opts, &ignore_hash);

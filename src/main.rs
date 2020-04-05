@@ -396,15 +396,13 @@ fn find_collisions(
 
     // We have processed all the files, remove entries for which we didn't have any collisions
     // to reduce memory consumption
-    //collision_hash.retain(|_, v| v.len() > 1);
-    //collision_hash.shrink_to_fit();
+    collision_hash.retain(|_, v| v.len() > 1);
+    collision_hash.shrink_to_fit();
 
+    // At the very least we should re-work this to an iterator with a collect
     let mut collision_vec = Vec::with_capacity(collision_hash.len());
-
     for (_, v) in collision_hash.into_iter() {
-        if v.len() > 1 {
-            collision_vec.push(v);
-        }
+        collision_vec.push(v);
     }
 
     let results: Vec<Vec<Collision>> = collision_vec

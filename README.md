@@ -83,4 +83,4 @@ consumption while examining the Linux kernel source tree for duplicates,
 `5.2` branch which has ~`17M` lines of code.
 Chart generated with [psrecord](https://github.com/astrofrog/psrecord).
 
-![duplihere_checked_add](https://user-images.githubusercontent.com/2520480/70479924-0a6b8a00-1aa4-11ea-8510-ad7b751070b9.png)
+![multithread](https://user-images.githubusercontent.com/2520480/78509915-2b44a300-7757-11ea-9aa2-4cbf474a8764.png)

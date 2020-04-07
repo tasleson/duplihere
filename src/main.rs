@@ -405,11 +405,7 @@ fn find_collisions(
     collision_hash.retain(|_, v| v.len() > 1);
     collision_hash.shrink_to_fit();
 
-    // At the very least we should re-work this to an iterator with a collect
-    let mut collision_vec = Vec::with_capacity(collision_hash.len());
-    for (_, v) in collision_hash.into_iter() {
-        collision_vec.push(v);
-    }
+    let collision_vec: Vec<Vec<(u32, u32)>> = collision_hash.into_iter().map(|(_, v)| v).collect();
 
     collision_vec
         .par_iter()

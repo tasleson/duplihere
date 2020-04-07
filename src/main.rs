@@ -419,12 +419,7 @@ fn process_report(
     opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
 ) {
-    // At the very least we should re-work this to an iterator with a collect
-    let mut final_report: Vec<Collision> = Vec::with_capacity(results_hash.len());
-    for (_, v) in results_hash.into_iter() {
-        final_report.push(v);
-    }
-
+    let mut final_report: Vec<Collision> = results_hash.into_iter().map(|(_, v)| v).collect();
     final_report.par_sort_unstable_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
     let mut printable_results: Vec<Collision> = Vec::new();

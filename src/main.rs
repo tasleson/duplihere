@@ -206,7 +206,7 @@ impl Collision {
 struct ReportResults<'a> {
     num_lines: u64,
     num_ignored: u64,
-    duplicates: &'a Vec<Collision>,
+    duplicates: &'a [Collision],
 }
 
 fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
@@ -295,7 +295,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
 }
 
 fn print_report(
-    printable_results: &Vec<Collision>,
+    printable_results: &[Collision],
     opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
 ) {

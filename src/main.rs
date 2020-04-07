@@ -607,48 +607,51 @@ fn main() -> Result<(), rags::Error> {
                 ignore_hash = get_ignore_hashes(&opts.ignore);
             }
 
-            for g in &opts.file_globs {
-                match glob(&g) {
-                    Ok(entries) => {
-                        for filename in entries {
-                            match filename {
-                                Ok(specific_file) => {
-                                    if specific_file.is_file() {
-                                        let file_str_name =
-                                            String::from(specific_file.to_str().unwrap());
+            {
+                // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
+                let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
 
-                                        match canonicalize(file_str_name.clone()) {
-                                            Ok(fn_ok) => {
-                                                let c_name_str =
-                                                    String::from(fn_ok.to_str().unwrap());
+                for g in &opts.file_globs {
+                    match glob(&g) {
+                        Ok(entries) => {
+                            for filename in entries {
+                                match filename {
+                                    Ok(specific_file) => {
+                                        if specific_file.is_file() {
+                                            let file_str_name =
+                                                String::from(specific_file.to_str().unwrap());
 
-                                                if let Some(fid) = FILE_LOOKUP
-                                                    .lock()
-                                                    .unwrap()
-                                                    .register_file(&c_name_str)
-                                                {
-                                                    files_to_process.push((fid, c_name_str));
+                                            match canonicalize(file_str_name.clone()) {
+                                                Ok(fn_ok) => {
+                                                    let c_name_str =
+                                                        String::from(fn_ok.to_str().unwrap());
+
+                                                    if let Some(fid) = file_lookup_locked
+                                                        .register_file(&c_name_str)
+                                                    {
+                                                        files_to_process.push((fid, c_name_str));
+                                                    }
                                                 }
-                                            }
-                                            Err(e) => {
-                                                println!(
+                                                Err(e) => {
+                                                    println!(
                                                     "WARNING: Unable to process file {}, reason {}",
                                                     file_str_name, e
                                                 );
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                Err(e) => {
-                                    println!("Unable to process {:?}", e);
-                                    process::exit(1);
+                                    Err(e) => {
+                                        println!("Unable to process {:?}", e);
+                                        process::exit(1);
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        println!("Bad glob pattern supplied '{}', error: {}", g, e);
-                        process::exit(1);
+                        Err(e) => {
+                            println!("Bad glob pattern supplied '{}', error: {}", g, e);
+                            process::exit(1);
+                        }
                     }
                 }
             }

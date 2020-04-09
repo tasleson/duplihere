@@ -216,7 +216,7 @@ fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
             || (left.1 >= right.1 && left.1 <= (right.1 + end)))
 }
 
-fn walk_collision(
+fn maximize_collision(
     file_hashes: &[Vec<u64>],
     l_info: (u32, u32),
     r_info: (u32, u32),
@@ -362,7 +362,7 @@ fn print_report(
     }
 }
 
-fn johnny_cash(
+fn walk_collision(
     collisions: &[(u32, u32)],
     file_hashes: &[Vec<u64>],
     min_lines: u32,
@@ -373,7 +373,7 @@ fn johnny_cash(
             let (l_file, l_start) = &collisions[l_idx];
             let (r_file, r_start) = &collisions[r_idx];
 
-            if let Some(mut coll) = walk_collision(
+            if let Some(mut coll) = maximize_collision(
                 file_hashes,
                 (*l_file, *l_start),
                 (*r_file, *r_start),
@@ -409,7 +409,7 @@ fn find_collisions(
 
     collision_vec
         .par_iter()
-        .for_each(|e| johnny_cash(e, file_hashes, opts.lines, &results_hash));
+        .for_each(|e| walk_collision(e, file_hashes, opts.lines, &results_hash));
 
     results_hash
 }

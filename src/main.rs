@@ -89,7 +89,7 @@ fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> 
     rc
 }
 
-fn mprocess_file(
+fn process_file(
     fid: u32,
     filename: &str,
     min_lines: usize,
@@ -661,7 +661,7 @@ fn main() -> Result<(), rags::Error> {
                 Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
 
             files_to_process.par_iter().for_each(|e| {
-                mprocess_file(
+                process_file(
                     e.0,
                     &e.1,
                     opts.lines as usize,

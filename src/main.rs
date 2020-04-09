@@ -66,7 +66,7 @@ fn file_signatures(filename: &str) -> Vec<u64> {
     rc
 }
 
-fn mrolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> {
+fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> {
     let mut rc = vec![];
 
     if file_signatures.len() > min_lines {
@@ -97,7 +97,7 @@ fn mprocess_file(
     collision_hashes: &DashMap<u64, Vec<(u32, u32)>>,
 ) {
     let file_signatures = file_signatures(&filename);
-    let file_rolling_hashes = mrolling_hashes(&file_signatures, min_lines);
+    let file_rolling_hashes = rolling_hashes(&file_signatures, min_lines);
 
     file_hashes.lock().unwrap()[fid as usize] = file_signatures;
 

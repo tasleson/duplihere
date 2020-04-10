@@ -141,11 +141,11 @@ impl Serialize for Collision {
     where
         S: Serializer,
     {
-        // TODO: Lets just get the lock once here.
+        let file_lookup_lock = FILE_LOOKUP.lock().unwrap();
         let files_infos: Vec<(String, u32)> = self
             .files
             .iter()
-            .map(|i| (FILE_LOOKUP.lock().unwrap().id_to_name(i.0).to_string(), i.1))
+            .map(|i| (file_lookup_lock.id_to_name(i.0).to_string(), i.1))
             .collect();
 
         let mut fid = serializer.serialize_struct("Collision", 3)?;

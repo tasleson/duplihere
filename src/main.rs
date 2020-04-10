@@ -35,7 +35,6 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 /// For a given file, walk it line by line calculating, removing leading and trailing WS and
 /// calculating the signatures for each line, return the information as a vector of hash signatures.
-/// TODO: Calculate the rolling hashes at the same time.
 /// TODO: If the trimmed line length is Zero, simply use a zero or cached value.
 fn file_signatures(filename: &str) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::new();

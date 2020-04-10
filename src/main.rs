@@ -52,14 +52,14 @@ fn file_signatures(filename: &str) -> Vec<u64> {
                         }
                     }
                     Err(e) => {
-                        println!("WARNING: Error processing file {} reason {}", filename, e);
+                        eprintln!("WARNING: Error processing file {} reason {}", filename, e);
                         return rc;
                     }
                 }
             }
         }
         Err(e) => {
-            println!("ERROR: Unable to open {}, reason {}", filename, e);
+            eprintln!("ERROR: Unable to open {}, reason {}", filename, e);
         }
     }
 
@@ -287,7 +287,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
                 line_number += 1;
             }
             Err(e) => {
-                println!("WARNING: Error processing file {} reason {}", filename, e);
+                eprintln!("WARNING: Error processing file {} reason {}", filename, e);
                 break;
             }
         }
@@ -470,7 +470,7 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
                     if let Ok(hv) = l.parse::<u64>() {
                         ignores.insert(hv, true);
                     } else {
-                        println!("WARNING: Ignore file contains invalid hash value \"{}\"", l);
+                        eprintln!("WARNING: Ignore file contains invalid hash value \"{}\"", l);
                     }
                 }
             }
@@ -633,7 +633,7 @@ fn main() -> Result<(), rags::Error> {
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    println!(
+                                                    eprintln!(
                                                     "WARNING: Unable to process file {}, reason {}",
                                                     file_str_name, e
                                                 );
@@ -642,14 +642,14 @@ fn main() -> Result<(), rags::Error> {
                                         }
                                     }
                                     Err(e) => {
-                                        println!("Unable to process {:?}", e);
+                                        eprintln!("Unable to process {:?}", e);
                                         process::exit(1);
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("Bad glob pattern supplied '{}', error: {}", g, e);
+                            eprintln!("Bad glob pattern supplied '{}', error: {}", g, e);
                             process::exit(1);
                         }
                     }

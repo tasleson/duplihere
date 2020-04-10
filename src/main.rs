@@ -26,12 +26,17 @@ lazy_static! {
     static ref FILE_LOOKUP: Mutex<FileId> = Mutex::new(FileId::new());
 }
 
+/// Generates the hash for 'T' which in this case is a utf-8 string.
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
 }
 
+/// For a given file, walk it line by line calculating, removing leading and trailing WS and
+/// calculating the signatures for each line, return the information as a vector of hash signatures.
+/// TODO: Calculate the rolling hashes at the same time.
+/// TODO: If the trimmed line length is Zero, simply use a zero or cached value.
 fn file_signatures(filename: &str) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::new();
 
@@ -66,6 +71,10 @@ fn file_signatures(filename: &str) -> Vec<u64> {
     rc
 }
 
+/// For a specific file, calculate the hash signature for 'min_lines' in size using a sliding window
+/// so that we can detect duplicate text of at least min_lines in size anywhere in each file.
+/// Store the hash signature and start line in a vector of tuples which we will then register
+/// in the collision hash.
 fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> {
     let mut rc = vec![];
 
@@ -116,6 +125,8 @@ fn process_file(
     }
 }
 
+/// Used to record a section of duplicated text.  We store the hash signature, how many lines
+/// match and a vector of file ids and the starting line in the file.
 #[derive(Debug)]
 struct Collision {
     key: u64,
@@ -124,11 +135,13 @@ struct Collision {
     sig: u64,
 }
 
+/// Used to convert a collision in our results to JSON for it.
 impl Serialize for Collision {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
+        // TODO: Lets just get the lock once here.
         let files_infos: Vec<(String, u32)> = self
             .files
             .iter()
@@ -144,6 +157,9 @@ impl Serialize for Collision {
 }
 
 impl Collision {
+
+    /// A signature for a collision is the hash value of the data that represents the collision,
+    /// this is used to identify duplicate result collisions, see _signature for calculation.
     fn signature(&self) -> u64 {
         self.sig
     }
@@ -186,6 +202,12 @@ impl Collision {
         }
     }
 
+    /// Given a collision, remove duplicate files from it, any overlaps for the same file
+    /// and then generate it's signature.  This is done because we can run into some very
+    /// interesting text patterns for firmware blobs stored as hex text which have repeating
+    /// sequences.  TODO: Revisit the need for this code with actual examples to explain it better.
+    /// I should have taken better notes in the code when I was running into these very interesting
+    /// results and wondering what the input looked like.
     fn scrub(&mut self) {
         // Remove duplicates from each by sorting and then dedup
         self.files.sort_by(|a, b| {
@@ -202,6 +224,7 @@ impl Collision {
     }
 }
 
+/// Some stats on what we processed and found.
 #[derive(Debug, Serialize)]
 struct ReportResults<'a> {
     num_lines: u64,
@@ -209,6 +232,9 @@ struct ReportResults<'a> {
     duplicates: &'a [Collision],
 }
 
+// Check to see if we are checking for duplicate text in the same file and that one or more lines
+// overlap with each other.  There is nothing useful to report when this occurs, because the same
+// lines of text match each other in the same file.
 fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
     left.0 == right.0
         && (left.1 == right.1
@@ -216,10 +242,12 @@ fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
             || (left.1 >= right.1 && left.1 <= (right.1 + end)))
 }
 
+/// Find the largest number of matching lines by going line by line from a known duplication point
+/// and recording it if it's bigger than the default number of matching lines
 fn maximize_collision(
     file_hashes: &[Vec<u64>],
-    l_info: (u32, u32),
-    r_info: (u32, u32),
+    l_info: (u32, u32),         // File id (index into file_hashes), line start
+    r_info: (u32, u32),         // File id (index into file_hashes, line start
     min_lines: u32,
 ) -> Option<Collision> {
     let l_h = &file_hashes[l_info.0 as usize];
@@ -267,12 +295,13 @@ fn maximize_collision(
     })
 }
 
-fn print_dup_text(filename: &str, start: usize, count: usize) {
+/// Given a file name, a start line number, and number of lines, dump the text into the output.
+fn print_dup_text(filename: &str, start_line: usize, count: usize) {
     let file = File::open(filename)
         .unwrap_or_else(|_| panic!("Unable to open file we have already opened {:?}", filename));
     let mut reader = BufReader::new(file);
     let mut line_number = 0;
-    let end = start + count;
+    let end = start_line + count;
 
     while line_number < end {
         let mut buf: Vec<u8> = vec![];
@@ -280,7 +309,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
             Ok(num_bytes) => {
                 if num_bytes == 0 {
                     break;
-                } else if line_number >= start {
+                } else if line_number >= start_line {
                     print!("{}", String::from_utf8_lossy(&buf));
                 }
 
@@ -294,6 +323,7 @@ fn print_dup_text(filename: &str, start: usize, count: usize) {
     }
 }
 
+/// Display the output as text or structured JSON.
 fn print_report(
     printable_results: &[Collision],
     opts: &Options,
@@ -316,6 +346,7 @@ fn print_report(
                     p.num_lines
                 );
 
+                // TODO: just get the FILE_LOOKUP lock once here.
                 for spec_file in &p.files {
                     let filename = FILE_LOOKUP.lock().unwrap().id_to_name(spec_file.0);
                     let start_line = spec_file.1;
@@ -362,6 +393,9 @@ fn print_report(
     }
 }
 
+/// When we have more than one region of text that matches another we will walk all combination
+/// of matching text and see if we actually have a bigger overlap of texts.  When we do we will
+/// store in in the results hash.
 fn walk_collision(
     collisions: &[(u32, u32)],
     file_hashes: &[Vec<u64>],
@@ -390,6 +424,11 @@ fn walk_collision(
     }
 }
 
+/// At this point in time we have a vector of vectors which contains the line hash signatures and
+/// we have also calculated the rolling hash signatures for each file and registered them in the
+/// collision_hash.  We now remove any hash entries where the value for the key is 1 and for all
+/// the others we will try to determine the maximum size of the collision, aka. the duplicated
+/// text number of lines.
 fn find_collisions(
     collision_hash: DashMap<u64, Vec<(u32, u32)>>,
     file_hashes: &mut Vec<Vec<u64>>,
@@ -414,6 +453,8 @@ fn find_collisions(
     results_hash
 }
 
+/// We have all the data, we now need to do some sorting and duplicate removals and then
+/// dump the end data.
 fn process_report(
     results_hash: DashMap<u64, Collision>,
     opts: &Options,
@@ -453,6 +494,8 @@ fn process_report(
     print_report(&printable_results, &opts, &ignore_hashes);
 }
 
+/// Open the user supplied file which contains the hash signatures for text that we don't
+/// want to report on.
 fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
     let mut ignores: HashMap<u64, bool> = HashMap::new();
 
@@ -487,6 +530,11 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
     ignores
 }
 
+/// Data structure which we use to store the count of how many files we have processed,
+/// a vector of file name strings and a hash map which maps file name to integer.  We do this so
+/// that we only have one copy of the file names in memory and use an integer to identify the
+/// files though out the source code.  This reduces memory consumption significantly and also
+/// results in file name compares becoming integer comparisons.
 #[derive(Debug)]
 struct FileId {
     num_files: u32,
@@ -503,6 +551,8 @@ impl FileId {
         }
     }
 
+    /// Given a file name, if it doesn't already exist we will store the information about which
+    /// index it is stored in and it's value.
     fn register_file(&mut self, file_name: &str) -> Option<u32> {
         if self.name_to_index.contains_key(&file_name.to_string()) {
             return None;
@@ -521,15 +571,18 @@ impl FileId {
         Some(num)
     }
 
+    /// Given an id (integer) return the actual file name.
     fn id_to_name(&self, index: u32) -> Arc<String> {
         self.index_to_name[index as usize].clone()
     }
 
+    /// Number of files we have information for.
     fn number_files(&self) -> u32 {
         self.num_files
     }
 }
 
+/// Command line options.
 #[derive(Debug)]
 pub struct Options {
     lines: u32,
@@ -539,6 +592,7 @@ pub struct Options {
     ignore: String,
 }
 
+/// Default values for the command line options.
 impl Default for Options {
     fn default() -> Options {
         Options {

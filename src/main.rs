@@ -157,7 +157,6 @@ impl Serialize for Collision {
 }
 
 impl Collision {
-
     /// A signature for a collision is the hash value of the data that represents the collision,
     /// this is used to identify duplicate result collisions, see _signature for calculation.
     fn signature(&self) -> u64 {
@@ -246,8 +245,8 @@ fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
 /// and recording it if it's bigger than the default number of matching lines
 fn maximize_collision(
     file_hashes: &[Vec<u64>],
-    l_info: (u32, u32),         // File id (index into file_hashes), line start
-    r_info: (u32, u32),         // File id (index into file_hashes, line start
+    l_info: (u32, u32), // File id (index into file_hashes), line start
+    r_info: (u32, u32), // File id (index into file_hashes, line start
     min_lines: u32,
 ) -> Option<Collision> {
     let l_h = &file_hashes[l_info.0 as usize];
@@ -331,6 +330,7 @@ fn print_report(
 ) {
     let mut num_lines: u64 = 0;
     let mut ignored: u64 = 0;
+    let file_lookup_locked = FILE_LOOKUP.lock().unwrap();
 
     for p in printable_results.iter() {
         if ignore_hashes.contains_key(&p.key) {
@@ -346,9 +346,8 @@ fn print_report(
                     p.num_lines
                 );
 
-                // TODO: just get the FILE_LOOKUP lock once here.
                 for spec_file in &p.files {
-                    let filename = FILE_LOOKUP.lock().unwrap().id_to_name(spec_file.0);
+                    let filename = file_lookup_locked.id_to_name(spec_file.0);
                     let start_line = spec_file.1;
                     let end_line = start_line + 1 + p.num_lines;
                     println!(
@@ -361,11 +360,7 @@ fn print_report(
 
                 if opts.print {
                     print_dup_text(
-                        FILE_LOOKUP
-                            .lock()
-                            .unwrap()
-                            .id_to_name(p.files[0usize].0)
-                            .as_str(),
+                        file_lookup_locked.id_to_name(p.files[0usize].0).as_str(),
                         p.files[0usize].1 as usize,
                         p.num_lines as usize,
                     );
@@ -380,7 +375,7 @@ fn print_report(
             https://github.com/tasleson/duplihere",
             num_lines,
             printable_results.len() - ignored as usize,
-            FILE_LOOKUP.lock().unwrap().number_files(),
+            file_lookup_locked.number_files(),
             ignored
         )
     } else {

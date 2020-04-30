@@ -1,4 +1,6 @@
 # duplihere
+
+### What
 Copy & Paste finder for source files or any utf-8 text files.
 
 
@@ -16,7 +18,7 @@ general I think writing a lexer and tokenizing the source isn't needed.
 There is a ton of code that is very much copy and pasted verbatim.
 Developers are lazy, they don't change things :-)
 
-### How to use
+### How
 
 ```bash
 duplihere - 0.8.0 - find duplicate text

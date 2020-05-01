@@ -21,7 +21,7 @@ Developers are lazy, they don't change things :-)
 ### How
 
 ```bash
-duplihere - 0.8.0 - find duplicate text
+duplihere - 0.8.1 - find duplicate text
 
 usage: duplihere [-pj -l <number> -i <file name>] -f <pattern or specific file>
 
@@ -86,4 +86,4 @@ the Linux kernel source tree for duplicates, `5.5` branch which has
 ~`18M+` lines of code. Chart generated with
 [psrecord](https://github.com/astrofrog/psrecord).
 
-![multithread](https://user-images.githubusercontent.com/2520480/78509915-2b44a300-7757-11ea-9aa2-4cbf474a8764.png)
+![dashmap_par_bridge](https://user-images.githubusercontent.com/2520480/80819654-fcc1b880-8b9a-11ea-8d47-0b10a2542981.png)

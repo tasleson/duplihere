@@ -430,11 +430,13 @@ fn find_collisions(
     let results_hash: DashMap<u64, Collision> = DashMap::new();
 
     // We have processed all the files, remove entries for which we didn't have any collisions
-    // to reduce memory consumption.  For large amounts of text this single call is solely
-    // responsible for consuming ~18 % total run-time in a single thread.  At the moment no
-    // better approach works for culling the hash.  We need to toss entries that never got a hash
-    // collision.
-    collision_hash.retain(|_, v| v.len() > 1);
+    // to reduce memory consumption.  Leveraging internals of dashmap to make this work with
+    // multiple threads.
+    collision_hash
+        .shards()
+        .iter()
+        .par_bridge()
+        .for_each(|s| s.write().retain(|_, v| v.get().len() > 1));
     collision_hash.shrink_to_fit();
 
     let collision_vec: Vec<Vec<(u32, u32)>> = collision_hash.into_iter().map(|(_, v)| v).collect();

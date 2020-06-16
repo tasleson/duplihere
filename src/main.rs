@@ -585,6 +585,7 @@ pub struct Options {
     json: bool,
     file_globs: Vec<String>,
     ignore: String,
+    threads: usize,
 }
 
 /// Default values for the command line options.
@@ -596,6 +597,7 @@ impl Default for Options {
             json: false,
             file_globs: vec![],
             ignore: "".to_string(),
+            threads: 4,
         }
     }
 }
@@ -641,6 +643,14 @@ fn main() -> Result<(), rags::Error> {
             Some("<file name>"),
             false,
         )?
+        .arg(
+            't',
+            "threads",
+            "number of threads to utilize. Set to 0 to match #cpu cores",
+            &mut opts.threads,
+            Some("<thread number>"),
+            false
+        )?
         .done()?;
 
     if parser.wants_help() {
@@ -648,6 +658,11 @@ fn main() -> Result<(), rags::Error> {
     } else {
         let results_hash: DashMap<u64, Collision>;
         let mut ignore_hash: HashMap<u64, bool> = HashMap::new();
+
+        // Dashmap scales well through ~3-4 threads, then stalls for our use case.
+        if opts.threads != 0 {
+            rayon::ThreadPoolBuilder::new().num_threads(opts.threads).build_global().unwrap();
+        }
 
         {
             let mut files_to_process: Vec<(u32, String)> = vec![];

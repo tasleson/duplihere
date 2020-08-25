@@ -1,7 +1,7 @@
 # duplihere
 
 ### What
-Copy & Paste finder for source files or any utf-8 text files.
+Copy & Paste finder for source files or any structured utf-8 text files.
 
 
 ### Why
@@ -21,9 +21,9 @@ Developers are lazy, they don't change things :-)
 ### How
 
 ```bash
-duplihere - 0.8.1 - find duplicate text
+duplihere - 0.9.0 - find duplicate text
 
-usage: duplihere [-pj -l <number> -i <file name>] -f <pattern or specific file>
+usage: duplihere [-pj -l <number> -i <file name> -t <thread number>] -f <pattern or specific file>
 
 Find duplicate lines of text in one or more text files.
 
@@ -38,10 +38,10 @@ argument:                                        description
     -l, --lines <number>                         minimum number of duplicate lines [default: 6]
     -f, --file <pattern or specific file>        pattern or file eg. "**/*.[h|c]" recursive, "*.py", "file.ext", can repeat [required]
     -i, --ignore <file name>                     file containing hash values to ignore, one per line
-
+    -t, --threads <thread number>                number of threads to utilize. Set to 0 to match #cpu cores [default: 4]
 ```
 
-An example where we recurse in a directory for python files and a directory
+An example where we re-curse in a directory for python files and a directory
 that contains python files ...
 ```bash
 $ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' -f '/tmp/*.py'
@@ -80,7 +80,7 @@ $ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j
 ### Status
 
 Tool has enough features and functionality for meaningful results.
-With the latest mult-thread support it's quite fast on
+With the latest multi-thread support it's quite fast on
 big source trees.  Current graph of memory and CPU consumption while examining
 the Linux kernel source tree for duplicates, `5.5` branch which has
 ~`18M+` lines of code. Chart generated with

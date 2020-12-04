@@ -358,7 +358,7 @@ fn print_report(
 
                 if opts.print {
                     print_dup_text(
-                        file_lookup_locked.id_to_name(p.files[0usize].0).as_str(),
+                        &*file_lookup_locked.id_to_name(p.files[0usize].0),
                         p.files[0usize].1 as usize,
                         p.num_lines as usize,
                     );
@@ -533,8 +533,8 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
 #[derive(Debug)]
 struct FileId {
     num_files: u32,
-    index_to_name: Vec<Arc<String>>,
-    name_to_index: HashMap<Arc<String>, u32>,
+    index_to_name: Vec<Arc<str>>,
+    name_to_index: HashMap<Arc<str>, u32>,
 }
 
 impl FileId {
@@ -549,14 +549,14 @@ impl FileId {
     /// Given a file name, if it doesn't already exist we will store the information about which
     /// index it is stored in and it's value.
     fn register_file(&mut self, file_name: &str) -> Option<u32> {
-        if self.name_to_index.contains_key(&file_name.to_string()) {
+        if self.name_to_index.contains_key(file_name) {
             return None;
         }
         let num = self.num_files;
-        let name = Arc::new(file_name.to_string());
+        let name = Arc::new(file_name);
 
-        self.index_to_name.push(name.clone());
-        self.name_to_index.insert(name, self.num_files);
+        self.index_to_name.push(Arc::from(*name));
+        self.name_to_index.insert(Arc::from(*name), self.num_files);
         if let Some(v) = self.num_files.checked_add(1) {
             self.num_files = v;
         } else {
@@ -567,7 +567,7 @@ impl FileId {
     }
 
     /// Given an id (integer) return the actual file name.
-    fn id_to_name(&self, index: u32) -> Arc<String> {
+    fn id_to_name(&self, index: u32) -> Arc<str> {
         self.index_to_name[index as usize].clone()
     }
 

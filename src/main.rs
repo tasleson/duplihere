@@ -649,7 +649,7 @@ fn main() -> Result<(), rags::Error> {
             "number of threads to utilize. Set to 0 to match #cpu cores",
             &mut opts.threads,
             Some("<thread number>"),
-            false
+            false,
         )?
         .done()?;
 
@@ -661,7 +661,10 @@ fn main() -> Result<(), rags::Error> {
 
         // Dashmap scales well through ~3-4 threads, then stalls for our use case.
         if opts.threads != 0 {
-            rayon::ThreadPoolBuilder::new().num_threads(opts.threads).build_global().unwrap();
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(opts.threads)
+                .build_global()
+                .unwrap();
         }
 
         {

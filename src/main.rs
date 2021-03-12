@@ -347,7 +347,7 @@ fn print_report(
                 for spec_file in &p.files {
                     let filename = file_lookup_locked.id_to_name(spec_file.0);
                     let start_line = spec_file.1;
-                    let end_line = start_line + 1 + p.num_lines;
+                    let end_line = start_line + p.num_lines;
                     println!(
                         "Between lines {} and {} in {}",
                         start_line + 1,

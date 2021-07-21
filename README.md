@@ -13,7 +13,7 @@ A number of different copy and paste detectors exist.  Some examples include:
 * [tctoolkit](https://bitbucket.org/nitinbhide/tctoolkit/src/default/)
 
 So why write another?  I've wanted a simple tool, one that works like simian,
-but is open source and free for anyone. Thus this project was born.  In
+but is open source and free for everyone. Thus this project was born.  In
 general I think writing a lexer and tokenizing the source isn't needed.
 There is a ton of code that is very much copy and pasted verbatim.
 Developers are lazy, they don't change things :-)

@@ -560,7 +560,7 @@ impl FileId {
         if let Some(v) = self.num_files.checked_add(1) {
             self.num_files = v;
         } else {
-            eprintln!("Number of files processed exceeds {}", u32::max_value());
+            eprintln!("Number of files processed exceeds {}", u32::MAX);
             process::exit(2);
         }
         Some(num)

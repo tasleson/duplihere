@@ -114,8 +114,7 @@ fn process_file(
             match collision_hashes.get_mut(&r_hash) {
                 Some(mut existing) => existing.push((fid, line_number)),
                 None => {
-                    let mut entry: Vec<(u32, u32)> = Vec::new();
-                    entry.push((fid, line_number));
+                    let entry: Vec<(u32, u32)> = vec![(fid, line_number)];
                     collision_hashes.insert(r_hash, entry);
                 }
             }
@@ -281,9 +280,7 @@ fn maximize_collision(
         return None;
     }
 
-    let mut files: Vec<(u32, u32)> = Vec::new();
-    files.push((l_info.0, l_info.1));
-    files.push((r_info.0, r_info.1));
+    let files: Vec<(u32, u32)> = vec![(l_info.0, l_info.1), (r_info.0, r_info.1)];
     Some(Collision {
         key: s.finish(),
         num_lines: offset,

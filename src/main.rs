@@ -103,7 +103,7 @@ fn process_file(
     file_hashes: &Mutex<Vec<Vec<u64>>>,
     collision_hashes: &DashMap<u64, Vec<(u32, u32)>>,
 ) {
-    let file_signatures = file_signatures(&filename);
+    let file_signatures = file_signatures(filename);
     let file_rolling_hashes = rolling_hashes(&file_signatures, min_lines);
 
     file_hashes.lock().unwrap()[fid as usize] = file_signatures;
@@ -483,7 +483,7 @@ fn process_report(
         }
     });
 
-    print_report(&printable_results, &opts, &ignore_hashes);
+    print_report(&printable_results, opts, ignore_hashes);
 }
 
 /// Open the user supplied file which contains the hash signatures for text that we don't
@@ -676,7 +676,7 @@ fn main() -> Result<(), rags::Error> {
                 let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
 
                 for g in &opts.file_globs {
-                    match glob(&g) {
+                    match glob(g) {
                         Ok(entries) => {
                             for filename in entries {
                                 match filename {

@@ -38,7 +38,7 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 fn file_signatures(filename: &str) -> Vec<u64> {
     let mut rc: Vec<u64> = Vec::new();
 
-    match File::open(filename.to_string()) {
+    match File::open(filename) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
 
@@ -491,7 +491,7 @@ fn process_report(
 fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
     let mut ignores: HashMap<u64, bool> = HashMap::new();
 
-    let fh = File::open(file_name.to_string());
+    let fh = File::open(file_name);
 
     match fh {
         Ok(fh) => {

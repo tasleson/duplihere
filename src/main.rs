@@ -421,7 +421,7 @@ fn walk_collision(
 /// text number of lines.
 fn find_collisions(
     collision_hash: DashMap<u64, Vec<(u32, u32)>>,
-    file_hashes: &mut Vec<Vec<u64>>,
+    file_hashes: &mut [Vec<u64>],
     opts: &Options,
 ) -> DashMap<u64, Collision> {
     let results_hash: DashMap<u64, Collision> = DashMap::new();

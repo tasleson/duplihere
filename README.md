@@ -10,7 +10,7 @@ A number of different copy and paste detectors exist.  Some examples include:
 
 * [PMD](https://pmd.github.io/)
 * [Simian](http://www.harukizaemon.com/simian/)
-* [tctoolkit](https://bitbucket.org/nitinbhide/tctoolkit/src/default/)
+* [tctoolkit](https://github.com/nitinbhide/tctoolkit)
 
 So why write another?  I've wanted a simple tool, one that works like simian,
 but is open source and free for everyone. Thus this project was born.  In

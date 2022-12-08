@@ -98,23 +98,26 @@ fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> 
 }
 
 fn process_file(
-    fid: u32,
+    file_id: u32,
     filename: &str,
     min_lines: usize,
     file_hashes: &Mutex<Vec<Vec<u64>>>,
-    collision_hashes: &DashMap<u64, Vec<(u32, u32)>>,
+    collision_hashes: &DashMap<u64, Vec<LineId>>,
 ) {
     let file_signatures = file_signatures(filename);
     let file_rolling_hashes = rolling_hashes(&file_signatures, min_lines);
 
-    file_hashes.lock().unwrap()[fid as usize] = file_signatures;
+    file_hashes.lock().unwrap()[file_id as usize] = file_signatures;
 
     for e in file_rolling_hashes {
         let (r_hash, line_number) = e;
         collision_hashes
             .entry(r_hash)
             .or_insert_with(|| Vec::with_capacity(1))
-            .push((fid, line_number));
+            .push(LineId {
+                file_id,
+                line_number,
+            });
     }
 }
 
@@ -124,7 +127,7 @@ fn process_file(
 struct Collision {
     key: u64,
     num_lines: u32,
-    files: Vec<(u32, u32)>,
+    files: Vec<LineId>,
     sig: u64,
 }
 
@@ -138,7 +141,12 @@ impl Serialize for Collision {
         let files_infos: Vec<(String, u32)> = self
             .files
             .iter()
-            .map(|i| (file_lookup_lock.id_to_name(i.0).to_string(), i.1))
+            .map(|i| {
+                (
+                    file_lookup_lock.id_to_name(i.file_id).to_string(),
+                    i.line_number,
+                )
+            })
             .collect();
 
         let mut fid = serializer.serialize_struct("Collision", 3)?;
@@ -160,10 +168,8 @@ impl Collision {
         let mut s = DefaultHasher::new();
 
         for i in &self.files {
-            let file_n = &i.0;
-            let starts = i.1;
-            let end = starts + 1 + self.num_lines;
-            let rep = format!("{}{}", end, file_n);
+            let end = i.line_number + 1 + self.num_lines;
+            let rep = format!("{}{}", end, i.file_id);
             rep.hash(&mut s);
         }
         self.sig = s.finish();
@@ -175,14 +181,16 @@ impl Collision {
     // A good example of this is:
     // linux/drivers/net/wireless/broadcom/brcm80211/brcmsmac/phy/phytbl_n.c
     fn remove_overlap_same_file(&mut self) {
-        let first = &self.files[0].0;
-        let mut keep: VecDeque<(u32, u32)> = VecDeque::new();
+        let first = self.files[0].file_id;
+        let mut keep: VecDeque<LineId> = VecDeque::new();
 
         // If all the files are the same, process any overlaps.
-        if self.files.iter().all(|(file, _)| file == first) {
+        if self.files.iter().all(|line_id| line_id.file_id == first) {
             while let Some(cur) = self.files.pop() {
                 if let Some(next_one) = self.files.last() {
-                    if !(cur.1 >= next_one.1 && cur.1 <= next_one.1 + self.num_lines) {
+                    if !(cur.line_number >= next_one.line_number
+                        && cur.line_number <= next_one.line_number + self.num_lines)
+                    {
                         keep.push_front(cur);
                     }
                 } else {
@@ -202,8 +210,11 @@ impl Collision {
     /// results and wondering what the input looked like.
     fn scrub(&mut self) {
         // Remove duplicates from each by sorting and then dedup
-        self.files
-            .sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        self.files.sort_by(|a, b| {
+            a.line_number
+                .cmp(&b.line_number)
+                .then_with(|| a.file_id.cmp(&b.file_id))
+        });
         self.files.dedup();
         self.remove_overlap_same_file();
 
@@ -222,23 +233,25 @@ struct ReportResults<'a> {
 // Check to see if we are checking for duplicate text in the same file and that one or more lines
 // overlap with each other.  There is nothing useful to report when this occurs, because the same
 // lines of text match each other in the same file.
-fn overlap(left: (u32, u32), right: (u32, u32), end: u32) -> bool {
-    left.0 == right.0
-        && (left.1 == right.1
-            || (right.1 >= left.1 && right.1 <= (left.1 + end))
-            || (left.1 >= right.1 && left.1 <= (right.1 + end)))
+fn overlap(left: &LineId, right: &LineId, end: u32) -> bool {
+    left.file_id == right.file_id
+        && (left.line_number == right.line_number
+            || (right.line_number >= left.line_number
+                && right.line_number <= (left.line_number + end))
+            || (left.line_number >= right.line_number
+                && left.line_number <= (right.line_number + end)))
 }
 
 /// Find the largest number of matching lines by going line by line from a known duplication point
 /// and recording it if it's bigger than the default number of matching lines
 fn maximize_collision(
     file_hashes: &[Vec<u64>],
-    l_info: (u32, u32), // File id (index into file_hashes), line start
-    r_info: (u32, u32), // File id (index into file_hashes, line start
+    l_info: &LineId, // File id (index into file_hashes), line start
+    r_info: &LineId, // File id (index into file_hashes, line start
     min_lines: u32,
 ) -> Option<Collision> {
-    let l_h = &file_hashes[l_info.0 as usize];
-    let r_h = &file_hashes[r_info.0 as usize];
+    let l_h = &file_hashes[l_info.file_id as usize];
+    let r_h = &file_hashes[r_info.file_id as usize];
 
     // If we have collisions and we overlap, skip
     if overlap(l_info, r_info, min_lines) {
@@ -251,8 +264,8 @@ fn maximize_collision(
     let mut s = DefaultHasher::new();
 
     loop {
-        let l_index: usize = (l_info.1 + offset) as usize;
-        let r_index: usize = (r_info.1 + offset) as usize;
+        let l_index: usize = (l_info.line_number + offset) as usize;
+        let r_index: usize = (r_info.line_number + offset) as usize;
 
         if l_index < l_num && r_index < r_num {
             if l_h[l_index] == r_h[r_index] {
@@ -271,7 +284,7 @@ fn maximize_collision(
         return None;
     }
 
-    let files: Vec<(u32, u32)> = vec![(l_info.0, l_info.1), (r_info.0, r_info.1)];
+    let files: Vec<LineId> = vec![*l_info, *r_info];
     Some(Collision {
         key: s.finish(),
         num_lines: offset,
@@ -333,8 +346,8 @@ fn print_report(
                 );
 
                 for spec_file in &p.files {
-                    let filename = file_lookup_locked.id_to_name(spec_file.0);
-                    let start_line = spec_file.1;
+                    let filename = file_lookup_locked.id_to_name(spec_file.file_id);
+                    let start_line = spec_file.line_number;
                     let end_line = start_line + p.num_lines;
                     println!(
                         "Between lines {} and {} in {}",
@@ -346,8 +359,8 @@ fn print_report(
 
                 if opts.print {
                     print_dup_text(
-                        &*file_lookup_locked.id_to_name(p.files[0usize].0),
-                        p.files[0usize].1 as usize,
+                        &*file_lookup_locked.id_to_name(p.files[0usize].file_id),
+                        p.files[0usize].line_number as usize,
                         p.num_lines as usize,
                     );
                 }
@@ -378,20 +391,17 @@ fn print_report(
 /// of matching text and see if we actually have a bigger overlap of texts.  When we do we will
 /// store in in the results hash.
 fn walk_collision(
-    collisions: &[(u32, u32)],
+    collisions: &[LineId],
     file_hashes: &[Vec<u64>],
     min_lines: u32,
     results_hash: &DashMap<u64, Collision>,
 ) {
     for l_idx in 0..(collisions.len() - 1) {
         for r_idx in l_idx..collisions.len() {
-            let (l_file, l_start) = &collisions[l_idx];
-            let (r_file, r_start) = &collisions[r_idx];
-
             if let Some(coll) = maximize_collision(
                 file_hashes,
-                (*l_file, *l_start),
-                (*r_file, *r_start),
+                &collisions[l_idx],
+                &collisions[r_idx],
                 min_lines,
             ) {
                 match results_hash.entry(coll.key) {
@@ -411,7 +421,7 @@ fn walk_collision(
 /// the others we will try to determine the maximum size of the collision, aka. the duplicated
 /// text number of lines.
 fn find_collisions(
-    collision_hash: DashMap<u64, Vec<(u32, u32)>>,
+    collision_hash: DashMap<u64, Vec<LineId>>,
     file_hashes: &mut [Vec<u64>],
     opts: &Options,
 ) -> DashMap<u64, Collision> {
@@ -427,7 +437,7 @@ fn find_collisions(
         .for_each(|s| s.write().retain(|_, v| v.get().len() > 1));
     collision_hash.shrink_to_fit();
 
-    let collision_vec: Vec<Vec<(u32, u32)>> = collision_hash.into_iter().map(|(_, v)| v).collect();
+    let collision_vec: Vec<Vec<LineId>> = collision_hash.into_iter().map(|(_, v)| v).collect();
 
     collision_vec
         .par_iter()
@@ -465,8 +475,8 @@ fn process_report(
     printable_results.par_sort_unstable_by(|a, b| {
         a.num_lines
             .cmp(&b.num_lines)
-            .then_with(|| a.files[0].1.cmp(&b.files[0].1))
-            .then_with(|| a.files[0].0.cmp(&b.files[0].0))
+            .then_with(|| a.files[0].line_number.cmp(&b.files[0].line_number))
+            .then_with(|| a.files[0].file_id.cmp(&b.files[0].file_id))
     });
 
     print_report(&printable_results, opts, ignore_hashes);
@@ -506,6 +516,12 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
     }
 
     ignores
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LineId {
+    file_id: u32,
+    line_number: u32,
 }
 
 /// Data structure which we use to store the count of how many files we have processed,
@@ -706,7 +722,7 @@ fn main() -> Result<(), rags::Error> {
                 }
             }
 
-            let collision_hashes: DashMap<u64, Vec<(u32, u32)>> = DashMap::new();
+            let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
             let file_hashes: Mutex<Vec<Vec<u64>>> =
                 Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
 

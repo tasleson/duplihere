@@ -76,24 +76,23 @@ fn file_signatures(filename: &str) -> Vec<u64> {
 /// in the collision hash.
 fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> {
     let mut rc = vec![];
+    let mut prev_hash: u64 = 0;
 
-    if file_signatures.len() > min_lines {
-        let num_lines = file_signatures.len() - min_lines;
-        let mut prev_hash: u64 = 0;
-        for i in 0..num_lines {
-            let mut s = DefaultHasher::new();
-            for n in file_signatures.iter().skip(i).take(min_lines) {
-                n.hash(&mut s);
-            }
-            let digest = s.finish();
-
-            if prev_hash != digest {
-                rc.push((digest, i as u32));
-            }
-
-            prev_hash = digest;
+    for (i, window) in file_signatures.windows(min_lines).enumerate() {
+        let mut s = DefaultHasher::new();
+        for n in window {
+            n.hash(&mut s);
         }
+
+        let digest = s.finish();
+
+        if prev_hash != digest {
+            rc.push((digest, i as u32));
+        }
+
+        prev_hash = digest;
     }
+
     rc
 }
 

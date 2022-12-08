@@ -50,7 +50,7 @@ fn file_signatures(filename: &str) -> Vec<u64> {
     let mut buf: Vec<u8> = vec![];
 
     loop {
-        match reader.read_until('\n' as u8, &mut buf) {
+        match reader.read_until(b'\n', &mut buf) {
             Ok(num_bytes) => {
                 if num_bytes == 0 {
                     return rc;
@@ -359,7 +359,7 @@ fn print_report(
 
                 if opts.print {
                     print_dup_text(
-                        &*file_lookup_locked.id_to_name(p.start_lines[0usize].file_id),
+                        &file_lookup_locked.id_to_name(p.start_lines[0usize].file_id),
                         p.start_lines[0usize].line_number as usize,
                         p.num_lines as usize,
                     );

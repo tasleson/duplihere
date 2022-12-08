@@ -20,6 +20,7 @@ use std::io::{prelude::*, BufReader};
 use std::process;
 use std::sync::{Arc, Mutex};
 
+use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 
 lazy_static! {
@@ -108,17 +109,12 @@ fn process_file(
 
     file_hashes.lock().unwrap()[fid as usize] = file_signatures;
 
-    {
-        for e in file_rolling_hashes {
-            let (r_hash, line_number) = e;
-            match collision_hashes.get_mut(&r_hash) {
-                Some(mut existing) => existing.push((fid, line_number)),
-                None => {
-                    let entry: Vec<(u32, u32)> = vec![(fid, line_number)];
-                    collision_hashes.insert(r_hash, entry);
-                }
-            }
-        }
+    for e in file_rolling_hashes {
+        let (r_hash, line_number) = e;
+        collision_hashes
+            .entry(r_hash)
+            .or_insert_with(|| Vec::with_capacity(1))
+            .push((fid, line_number));
     }
 }
 
@@ -397,16 +393,16 @@ fn walk_collision(
             let (l_file, l_start) = &collisions[l_idx];
             let (r_file, r_start) = &collisions[r_idx];
 
-            if let Some(mut coll) = maximize_collision(
+            if let Some(coll) = maximize_collision(
                 file_hashes,
                 (*l_file, *l_start),
                 (*r_file, *r_start),
                 min_lines,
             ) {
-                match results_hash.get_mut(&coll.key) {
-                    Some(mut existing) => existing.files.append(&mut coll.files),
-                    None => {
-                        results_hash.insert(coll.key, coll);
+                match results_hash.entry(coll.key) {
+                    Entry::Occupied(mut o) => o.get_mut().files.extend(coll.files),
+                    Entry::Vacant(o) => {
+                        o.insert(coll);
                     }
                 }
             }

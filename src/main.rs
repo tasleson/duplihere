@@ -127,7 +127,7 @@ fn process_file(
 struct Collision {
     key: u64,
     num_lines: u32,
-    files: Vec<LineId>,
+    start_lines: Vec<LineId>,
     sig: u64,
 }
 
@@ -139,7 +139,7 @@ impl Serialize for Collision {
     {
         let file_lookup_lock = FILE_LOOKUP.lock().unwrap();
         let files_infos: Vec<(String, u32)> = self
-            .files
+            .start_lines
             .iter()
             .map(|i| {
                 (
@@ -167,7 +167,7 @@ impl Collision {
     fn _signature(&mut self) {
         let mut s = DefaultHasher::new();
 
-        for i in &self.files {
+        for i in &self.start_lines {
             let end = i.line_number + 1 + self.num_lines;
             let rep = format!("{}{}", end, i.file_id);
             rep.hash(&mut s);
@@ -181,13 +181,17 @@ impl Collision {
     // A good example of this is:
     // linux/drivers/net/wireless/broadcom/brcm80211/brcmsmac/phy/phytbl_n.c
     fn remove_overlap_same_file(&mut self) {
-        let first = self.files[0].file_id;
+        let first = self.start_lines[0].file_id;
         let mut keep: VecDeque<LineId> = VecDeque::new();
 
         // If all the files are the same, process any overlaps.
-        if self.files.iter().all(|line_id| line_id.file_id == first) {
-            while let Some(cur) = self.files.pop() {
-                if let Some(next_one) = self.files.last() {
+        if self
+            .start_lines
+            .iter()
+            .all(|line_id| line_id.file_id == first)
+        {
+            while let Some(cur) = self.start_lines.pop() {
+                if let Some(next_one) = self.start_lines.last() {
                     if !(cur.line_number >= next_one.line_number
                         && cur.line_number <= next_one.line_number + self.num_lines)
                     {
@@ -198,7 +202,7 @@ impl Collision {
                     break;
                 }
             }
-            self.files = Vec::from(keep);
+            self.start_lines = Vec::from(keep);
         }
     }
 
@@ -210,12 +214,12 @@ impl Collision {
     /// results and wondering what the input looked like.
     fn scrub(&mut self) {
         // Remove duplicates from each by sorting and then dedup
-        self.files.sort_by(|a, b| {
+        self.start_lines.sort_by(|a, b| {
             a.line_number
                 .cmp(&b.line_number)
                 .then_with(|| a.file_id.cmp(&b.file_id))
         });
-        self.files.dedup();
+        self.start_lines.dedup();
         self.remove_overlap_same_file();
 
         self._signature()
@@ -288,7 +292,7 @@ fn maximize_collision(
     Some(Collision {
         key: s.finish(),
         num_lines: offset,
-        files,
+        start_lines: files,
         sig: 0,
     })
 }
@@ -335,7 +339,7 @@ fn print_report(
         if ignore_hashes.contains_key(&p.key) {
             ignored += 1;
         } else {
-            num_lines += (p.num_lines as usize * (p.files.len() - 1)) as u64;
+            num_lines += (p.num_lines as usize * (p.start_lines.len() - 1)) as u64;
 
             if !opts.json {
                 println!(
@@ -345,7 +349,7 @@ fn print_report(
                     p.num_lines
                 );
 
-                for spec_file in &p.files {
+                for spec_file in &p.start_lines {
                     let filename = file_lookup_locked.id_to_name(spec_file.file_id);
                     let start_line = spec_file.line_number;
                     let end_line = start_line + p.num_lines;
@@ -359,8 +363,8 @@ fn print_report(
 
                 if opts.print {
                     print_dup_text(
-                        &*file_lookup_locked.id_to_name(p.files[0usize].file_id),
-                        p.files[0usize].line_number as usize,
+                        &*file_lookup_locked.id_to_name(p.start_lines[0usize].file_id),
+                        p.start_lines[0usize].line_number as usize,
                         p.num_lines as usize,
                     );
                 }
@@ -405,7 +409,7 @@ fn walk_collision(
                 min_lines,
             ) {
                 match results_hash.entry(coll.key) {
-                    Entry::Occupied(mut o) => o.get_mut().files.extend(coll.files),
+                    Entry::Occupied(mut o) => o.get_mut().start_lines.extend(coll.start_lines),
                     Entry::Vacant(o) => {
                         o.insert(coll);
                     }
@@ -475,8 +479,12 @@ fn process_report(
     printable_results.par_sort_unstable_by(|a, b| {
         a.num_lines
             .cmp(&b.num_lines)
-            .then_with(|| a.files[0].line_number.cmp(&b.files[0].line_number))
-            .then_with(|| a.files[0].file_id.cmp(&b.files[0].file_id))
+            .then_with(|| {
+                a.start_lines[0]
+                    .line_number
+                    .cmp(&b.start_lines[0].line_number)
+            })
+            .then_with(|| a.start_lines[0].file_id.cmp(&b.start_lines[0].file_id))
     });
 
     print_report(&printable_results, opts, ignore_hashes);

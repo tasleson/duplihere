@@ -396,14 +396,9 @@ fn walk_collision(
     min_lines: u32,
     results_hash: &DashMap<u64, Collision>,
 ) {
-    for l_idx in 0..(collisions.len() - 1) {
-        for r_idx in l_idx..collisions.len() {
-            if let Some(coll) = maximize_collision(
-                file_hashes,
-                &collisions[l_idx],
-                &collisions[r_idx],
-                min_lines,
-            ) {
+    for (i, l_id) in collisions[0..(collisions.len() - 1)].iter().enumerate() {
+        for r_id in &collisions[i + 1..] {
+            if let Some(coll) = maximize_collision(file_hashes, l_id, r_id, min_lines) {
                 match results_hash.entry(coll.key) {
                     Entry::Occupied(mut o) => o.get_mut().start_lines.extend(coll.start_lines),
                     Entry::Vacant(o) => {

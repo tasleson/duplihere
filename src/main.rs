@@ -28,7 +28,7 @@ lazy_static! {
 }
 
 /// Generates the hash for 'T' which in this case is a utf-8 string.
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
+fn calculate_hash<T: Hash>(t: T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
@@ -37,37 +37,35 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 /// For a given file, walk it line by line calculating, removing leading and trailing WS and
 /// calculating the signatures for each line, return the information as a vector of hash signatures.
 fn file_signatures(filename: &str) -> Vec<u64> {
-    let mut rc: Vec<u64> = Vec::new();
-
-    match File::open(filename) {
-        Ok(file) => {
-            let mut reader = BufReader::new(file);
-
-            loop {
-                let mut buf: Vec<u8> = vec![];
-                match reader.read_until(0xA, &mut buf) {
-                    Ok(num_bytes) => {
-                        if num_bytes == 0 {
-                            return rc;
-                        } else {
-                            let l = String::from_utf8_lossy(&buf);
-                            rc.push(calculate_hash(&l.trim()));
-                            buf.truncate(0);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("WARNING: Error processing file {} reason {}", filename, e);
-                        return rc;
-                    }
-                }
-            }
-        }
+    let file = match File::open(filename) {
+        Ok(file) => file,
         Err(e) => {
             eprintln!("ERROR: Unable to open {}, reason {}", filename, e);
+            return Vec::new();
+        }
+    };
+
+    let mut rc: Vec<u64> = Vec::new();
+    let mut reader = BufReader::new(file);
+    let mut buf: Vec<u8> = vec![];
+
+    loop {
+        match reader.read_until('\n' as u8, &mut buf) {
+            Ok(num_bytes) => {
+                if num_bytes == 0 {
+                    return rc;
+                } else {
+                    let l = String::from_utf8_lossy(&buf);
+                    rc.push(calculate_hash(l.trim()));
+                    buf.clear();
+                }
+            }
+            Err(e) => {
+                eprintln!("WARNING: Error processing file {} reason {}", filename, e);
+                return rc;
+            }
         }
     }
-
-    rc
 }
 
 /// For a specific file, calculate the hash signature for 'min_lines' in size using a sliding window
@@ -89,7 +87,6 @@ fn rolling_hashes(file_signatures: &[u64], min_lines: usize) -> Vec<(u64, u32)> 
         if prev_hash != digest {
             rc.push((digest, i as u32));
         }
-
         prev_hash = digest;
     }
 

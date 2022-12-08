@@ -584,6 +584,54 @@ impl FileId {
     }
 }
 
+/// Get all files matching `file_globs` and update the global `FILE_LOOKUP`
+fn files_to_process(file_globs: &[String]) -> Vec<(u32, String)> {
+    let mut files_to_process = Vec::new();
+    // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
+    let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
+
+    for g in file_globs {
+        let entries = match glob(g) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("Bad glob pattern supplied '{}', error: {}", g, e);
+                process::exit(1);
+            }
+        };
+        for filename in entries {
+            let specific_file = match filename {
+                Ok(specific_file) => specific_file,
+                Err(e) => {
+                    eprintln!("Unable to process {:?}", e);
+                    process::exit(1);
+                }
+            };
+            if !specific_file.is_file() {
+                continue;
+            }
+            let file_str_name = specific_file.to_str().unwrap();
+
+            match canonicalize(file_str_name) {
+                Ok(fn_ok) => {
+                    let c_name_str = fn_ok.to_str().unwrap();
+
+                    if let Some(fid) = file_lookup_locked.register_file(c_name_str) {
+                        files_to_process.push((fid, c_name_str.to_string()));
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "WARNING: Unable to process file {}, reason {}",
+                        file_str_name, e
+                    );
+                }
+            }
+        }
+    }
+
+    files_to_process
+}
+
 /// Command line options.
 #[derive(Debug)]
 pub struct Options {
@@ -675,60 +723,11 @@ fn main() -> Result<(), rags::Error> {
         }
 
         {
-            let mut files_to_process: Vec<(u32, String)> = vec![];
-
             if !opts.ignore.is_empty() {
                 ignore_hash = get_ignore_hashes(&opts.ignore);
             }
 
-            {
-                // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
-                let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
-
-                for g in &opts.file_globs {
-                    match glob(g) {
-                        Ok(entries) => {
-                            for filename in entries {
-                                match filename {
-                                    Ok(specific_file) => {
-                                        if specific_file.is_file() {
-                                            let file_str_name =
-                                                String::from(specific_file.to_str().unwrap());
-
-                                            match canonicalize(file_str_name.clone()) {
-                                                Ok(fn_ok) => {
-                                                    let c_name_str =
-                                                        String::from(fn_ok.to_str().unwrap());
-
-                                                    if let Some(fid) = file_lookup_locked
-                                                        .register_file(&c_name_str)
-                                                    {
-                                                        files_to_process.push((fid, c_name_str));
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    eprintln!(
-                                                    "WARNING: Unable to process file {}, reason {}",
-                                                    file_str_name, e
-                                                );
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Unable to process {:?}", e);
-                                        process::exit(1);
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Bad glob pattern supplied '{}', error: {}", g, e);
-                            process::exit(1);
-                        }
-                    }
-                }
-            }
+            let files_to_process: Vec<(u32, String)> = files_to_process(&opts.file_globs);
 
             let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
             let file_hashes: Mutex<Vec<Vec<u64>>> =

@@ -202,13 +202,8 @@ impl Collision {
     /// results and wondering what the input looked like.
     fn scrub(&mut self) {
         // Remove duplicates from each by sorting and then dedup
-        self.files.sort_by(|a, b| {
-            if a.1 == b.1 {
-                a.0.cmp(&b.0) // Number match, order by file name
-            } else {
-                a.1.cmp(&b.1) // Numbers don't match, order by number
-            }
-        });
+        self.files
+            .sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
         self.files.dedup();
         self.remove_overlap_same_file();
 
@@ -468,15 +463,10 @@ fn process_report(
     }
 
     printable_results.par_sort_unstable_by(|a, b| {
-        if a.num_lines == b.num_lines {
-            if a.files[0].1 == b.files[0].1 {
-                a.files[0].0.cmp(&b.files[0].0)
-            } else {
-                a.files[0].1.cmp(&b.files[0].1)
-            }
-        } else {
-            a.num_lines.cmp(&b.num_lines)
-        }
+        a.num_lines
+            .cmp(&b.num_lines)
+            .then_with(|| a.files[0].1.cmp(&b.files[0].1))
+            .then_with(|| a.files[0].0.cmp(&b.files[0].0))
     });
 
     print_report(&printable_results, opts, ignore_hashes);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
-// Copyright (C) 2019 Tony Asleson <tony.asleson@gmail.com>
+// Copyright (C) 2019-2023 Tony Asleson <tony.asleson@gmail.com>
 #[macro_use]
 extern crate lazy_static;
 

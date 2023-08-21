@@ -531,8 +531,8 @@ struct LineId {
 #[derive(Debug)]
 struct FileId {
     num_files: u32,
-    index_to_name: Vec<Arc<str>>,
-    name_to_index: HashMap<Arc<str>, u32>,
+    index_to_name: Vec<Arc<String>>,
+    name_to_index: HashMap<Arc<String>, u32>,
 }
 
 impl FileId {
@@ -546,15 +546,15 @@ impl FileId {
 
     /// Given a file name, if it doesn't already exist we will store the information about which
     /// index it is stored in and it's value.
-    fn register_file(&mut self, file_name: &str) -> Option<u32> {
-        if self.name_to_index.contains_key(file_name) {
+    fn register_file(&mut self, file_name: Arc<String>) -> Option<u32> {
+        if self.name_to_index.contains_key(&file_name) {
             return None;
         }
         let num = self.num_files;
-        let name = Arc::new(file_name);
 
-        self.index_to_name.push(Arc::from(*name));
-        self.name_to_index.insert(Arc::from(*name), self.num_files);
+        self.index_to_name.push(Arc::clone(&file_name));
+        self.name_to_index
+            .insert(Arc::clone(&file_name), self.num_files);
         if let Some(v) = self.num_files.checked_add(1) {
             self.num_files = v;
         } else {
@@ -565,7 +565,7 @@ impl FileId {
     }
 
     /// Given an id (integer) return the actual file name.
-    fn id_to_name(&self, index: u32) -> Arc<str> {
+    fn id_to_name(&self, index: u32) -> Arc<String> {
         self.index_to_name[index as usize].clone()
     }
 
@@ -576,7 +576,7 @@ impl FileId {
 }
 
 /// Get all files matching `file_globs` and update the global `FILE_LOOKUP`
-fn files_to_process(file_globs: &[String]) -> Vec<(u32, String)> {
+fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
     let mut files_to_process = Vec::new();
     // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
     let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
@@ -605,9 +605,10 @@ fn files_to_process(file_globs: &[String]) -> Vec<(u32, String)> {
             match canonicalize(file_str_name) {
                 Ok(fn_ok) => {
                     let c_name_str = fn_ok.to_str().unwrap();
+                    let name = Arc::new(c_name_str.to_string());
 
-                    if let Some(fid) = file_lookup_locked.register_file(c_name_str) {
-                        files_to_process.push((fid, c_name_str.to_string()));
+                    if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name)) {
+                        files_to_process.push((fid, Arc::clone(&name)));
                     }
                 }
                 Err(e) => {
@@ -718,7 +719,7 @@ fn main() -> Result<(), rags::Error> {
                 ignore_hash = get_ignore_hashes(&opts.ignore);
             }
 
-            let files_to_process: Vec<(u32, String)> = files_to_process(&opts.file_globs);
+            let files_to_process: Vec<(u32, Arc<String>)> = files_to_process(&opts.file_globs);
 
             let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
             let file_hashes: Mutex<Vec<Vec<u64>>> =

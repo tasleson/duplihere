@@ -82,8 +82,8 @@ $ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j
 Tool has enough features and functionality for meaningful results.
 With the latest multi-thread support it's quite fast on
 big source trees.  Current graph of memory and CPU consumption while examining
-the Linux kernel source tree for duplicates, `5.5` branch which has
-~`18M+` lines of code. Chart generated with
+the Linux kernel source tree for duplicates. Run against Linux `6.5` branch (~24M lines) and all
+available CPU cores. Chart generated with
 [psrecord](https://github.com/astrofrog/psrecord).
 
-![dashmap_par_bridge](https://user-images.githubusercontent.com/2520480/80819654-fcc1b880-8b9a-11ea-8d47-0b10a2542981.png)
+![threadripper](https://github.com/tasleson/duplihere/assets/2520480/56e59144-e5b0-415c-90f0-b9459006f686)

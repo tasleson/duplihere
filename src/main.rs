@@ -460,7 +460,7 @@ fn process_report(
 
         for ea in final_report {
             let cs = ea.signature();
-            if chunk_processed.get(&cs).is_none() {
+            if !chunk_processed.contains_key(&cs) {
                 chunk_processed.insert(cs, true);
                 printable_results.push(ea);
             }

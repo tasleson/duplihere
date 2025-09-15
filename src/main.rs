@@ -295,8 +295,16 @@ fn maximize_collision(
 
 /// Given a file name, a start line number, and number of lines, dump the text into the output.
 fn print_dup_text(filename: &str, start_line: usize, count: usize) {
-    let file = File::open(filename)
-        .unwrap_or_else(|_| panic!("Unable to open file we have already opened {:?}", filename));
+    let file = match File::open(filename) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!(
+                "ERROR: Unable to re-open file {} for printing (deleted during proccessing): {}",
+                filename, e
+            );
+            return;
+        }
+    };
     let mut reader = BufReader::new(file);
     let mut line_number = 0;
     let end = start_line + count;
@@ -493,7 +501,16 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
             let buf = BufReader::new(fh);
 
             for line in buf.lines() {
-                let t = line.unwrap();
+                let t = match line {
+                    Ok(line_content) => line_content,
+                    Err(e) => {
+                        eprintln!(
+                            "WARNING: Error reading line from ignore file {}: {}",
+                            file_name, e
+                        );
+                        continue;
+                    }
+                };
                 let l = t.trim();
 
                 if !l.is_empty() && !l.starts_with('#') {
@@ -600,11 +617,11 @@ fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
             if !specific_file.is_file() {
                 continue;
             }
-            let file_str_name = specific_file.to_str().unwrap();
+            let file_str_name = specific_file.to_string_lossy().to_string();
 
-            match canonicalize(file_str_name) {
+            match canonicalize(&file_str_name) {
                 Ok(fn_ok) => {
-                    let c_name_str = fn_ok.to_str().unwrap();
+                    let c_name_str = fn_ok.to_string_lossy();
                     let name = Arc::new(c_name_str.to_string());
 
                     if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name)) {

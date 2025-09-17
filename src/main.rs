@@ -103,7 +103,13 @@ fn process_file(
     let file_signatures = file_signatures(filename);
     let file_rolling_hashes = rolling_hashes(&file_signatures, min_lines);
 
-    file_hashes.lock().unwrap()[file_id as usize] = file_signatures;
+    match file_hashes.lock() {
+        Ok(mut hashes) => hashes[file_id as usize] = file_signatures,
+        Err(e) => {
+            eprintln!("ERROR: Failed to acquire lock on file_hashes: {}", e);
+            return;
+        }
+    }
 
     for e in file_rolling_hashes {
         let (r_hash, line_number) = e;
@@ -133,7 +139,15 @@ impl Serialize for Collision {
     where
         S: Serializer,
     {
-        let file_lookup_lock = FILE_LOOKUP.lock().unwrap();
+        let file_lookup_lock = match FILE_LOOKUP.lock() {
+            Ok(lock) => lock,
+            Err(e) => {
+                eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
+                return Err(serde::ser::Error::custom(
+                    "Failed to acquire FILE_LOOKUP lock",
+                ));
+            }
+        };
         let files_infos: Vec<(String, u32)> = self
             .start_lines
             .iter()
@@ -337,7 +351,13 @@ fn print_report(
 ) {
     let mut num_lines: u64 = 0;
     let mut ignored: u64 = 0;
-    let file_lookup_locked = FILE_LOOKUP.lock().unwrap();
+    let file_lookup_locked = match FILE_LOOKUP.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
+            return;
+        }
+    };
 
     for p in printable_results.iter() {
         if ignore_hashes.contains_key(&p.key) {
@@ -391,7 +411,13 @@ fn print_report(
             num_ignored: ignored,
             duplicates: printable_results,
         };
-        println!("{}", serde_json::to_string_pretty(&r).unwrap());
+        match serde_json::to_string_pretty(&r) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("ERROR: Failed to serialize results to JSON: {}", e);
+                process::exit(1);
+            }
+        }
     }
 }
 
@@ -596,7 +622,13 @@ impl FileId {
 fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
     let mut files_to_process = Vec::new();
     // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
-    let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
+    let mut file_lookup_locked = match FILE_LOOKUP.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
+            process::exit(1);
+        }
+    };
 
     for g in file_globs {
         let entries = match glob(g) {
@@ -728,7 +760,7 @@ fn main() -> Result<(), rags::Error> {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(opts.threads)
                 .build_global()
-                .unwrap();
+                .expect("Failed to build global thread pool");
         }
 
         {
@@ -752,8 +784,17 @@ fn main() -> Result<(), rags::Error> {
                 )
             });
 
-            results_hash =
-                find_collisions(collision_hashes, &mut file_hashes.lock().unwrap(), &opts);
+            results_hash = find_collisions(
+                collision_hashes,
+                &mut match file_hashes.lock() {
+                    Ok(hashes) => hashes,
+                    Err(e) => {
+                        eprintln!("ERROR: Failed to acquire lock on file_hashes: {}", e);
+                        process::exit(1);
+                    }
+                },
+                &opts,
+            );
         }
 
         process_report(results_hash, &opts, &ignore_hash);

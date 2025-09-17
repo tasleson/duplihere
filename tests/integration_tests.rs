@@ -12,13 +12,13 @@
 //! - FileId management and memory optimization
 //! - Complex real-world scenarios with repeating patterns
 
-use duplihere::*;
-use std::io::Write;
-use tempfile::NamedTempFile;
 use dashmap::DashMap;
-use std::sync::{Arc, Mutex};
+use duplihere::*;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_calculate_hash() {
@@ -150,7 +150,7 @@ fn test_file_signatures_with_temp_file() {
     writeln!(temp_file, "line 3").expect("Failed to write to temp file");
 
     let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
-    let signatures = file_signatures(temp_path);
+    let signatures = file_signatures(temp_path).expect("Failed to get file signatures");
 
     // Should have 3 signatures
     assert_eq!(signatures.len(), 3);
@@ -167,16 +167,28 @@ fn test_file_signatures_with_temp_file() {
 
 #[test]
 fn test_file_signatures_nonexistent_file() {
-    let signatures = file_signatures("/nonexistent/file.txt");
-    assert_eq!(signatures.len(), 0);
+    let result = file_signatures("/nonexistent/file.txt");
+    assert!(result.is_err());
 }
 
 #[test]
 fn test_line_id_equality() {
-    let line1 = LineId { file_id: 1, line_number: 10 };
-    let line2 = LineId { file_id: 1, line_number: 10 };
-    let line3 = LineId { file_id: 1, line_number: 11 };
-    let line4 = LineId { file_id: 2, line_number: 10 };
+    let line1 = LineId {
+        file_id: 1,
+        line_number: 10,
+    };
+    let line2 = LineId {
+        file_id: 1,
+        line_number: 10,
+    };
+    let line3 = LineId {
+        file_id: 1,
+        line_number: 11,
+    };
+    let line4 = LineId {
+        file_id: 2,
+        line_number: 10,
+    };
 
     assert_eq!(line1, line2);
     assert_ne!(line1, line3);
@@ -189,9 +201,18 @@ fn test_collision_scrub() {
         key: 12345,
         num_lines: 5,
         start_lines: vec![
-            LineId { file_id: 1, line_number: 10 },
-            LineId { file_id: 1, line_number: 10 }, // Duplicate
-            LineId { file_id: 2, line_number: 5 },
+            LineId {
+                file_id: 1,
+                line_number: 10,
+            },
+            LineId {
+                file_id: 1,
+                line_number: 10,
+            }, // Duplicate
+            LineId {
+                file_id: 2,
+                line_number: 5,
+            },
         ],
         sig: 0,
     };
@@ -205,9 +226,18 @@ fn test_collision_scrub() {
 
 #[test]
 fn test_overlap_detection() {
-    let line1 = LineId { file_id: 1, line_number: 10 };
-    let line2 = LineId { file_id: 1, line_number: 12 };
-    let line3 = LineId { file_id: 2, line_number: 10 };
+    let line1 = LineId {
+        file_id: 1,
+        line_number: 10,
+    };
+    let line2 = LineId {
+        file_id: 1,
+        line_number: 12,
+    };
+    let line3 = LineId {
+        file_id: 2,
+        line_number: 10,
+    };
 
     // Same file, overlapping lines (assuming 5 lines overlap)
     assert!(overlap(&line1, &line2, 5));
@@ -216,7 +246,10 @@ fn test_overlap_detection() {
     assert!(!overlap(&line1, &line3, 5));
 
     // Same file, non-overlapping lines
-    let line4 = LineId { file_id: 1, line_number: 20 };
+    let line4 = LineId {
+        file_id: 1,
+        line_number: 20,
+    };
     assert!(!overlap(&line1, &line4, 5));
 }
 
@@ -224,12 +257,18 @@ fn test_overlap_detection() {
 fn test_maximize_collision_exact_match() {
     // Create test data for exact sequence matches
     let file_hashes = vec![
-        vec![1, 2, 3, 4, 5, 6, 7], // File 0
+        vec![1, 2, 3, 4, 5, 6, 7],  // File 0
         vec![8, 1, 2, 3, 4, 9, 10], // File 1: contains [1,2,3,4] at position 1
     ];
 
-    let left = LineId { file_id: 0, line_number: 0 };
-    let right = LineId { file_id: 1, line_number: 1 };
+    let left = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right = LineId {
+        file_id: 1,
+        line_number: 1,
+    };
 
     let collision = maximize_collision(&file_hashes, &left, &right, 3);
 
@@ -245,12 +284,18 @@ fn test_maximize_collision_exact_match() {
 fn test_maximize_collision_partial_match() {
     // Test where sequences match partially then diverge
     let file_hashes = vec![
-        vec![1, 2, 3, 4, 5], // File 0
+        vec![1, 2, 3, 4, 5],    // File 0
         vec![1, 2, 3, 99, 100], // File 1: matches first 3 elements, then diverges
     ];
 
-    let left = LineId { file_id: 0, line_number: 0 };
-    let right = LineId { file_id: 1, line_number: 0 };
+    let left = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right = LineId {
+        file_id: 1,
+        line_number: 0,
+    };
 
     let collision = maximize_collision(&file_hashes, &left, &right, 2);
 
@@ -262,13 +307,16 @@ fn test_maximize_collision_partial_match() {
 #[test]
 fn test_maximize_collision_no_match() {
     // Test completely different sequences
-    let file_hashes = vec![
-        vec![1, 2, 3, 4, 5],
-        vec![6, 7, 8, 9, 10],
-    ];
+    let file_hashes = vec![vec![1, 2, 3, 4, 5], vec![6, 7, 8, 9, 10]];
 
-    let left = LineId { file_id: 0, line_number: 0 };
-    let right = LineId { file_id: 1, line_number: 0 };
+    let left = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right = LineId {
+        file_id: 1,
+        line_number: 0,
+    };
 
     let collision = maximize_collision(&file_hashes, &left, &right, 2);
     // Since the first elements are different (1 != 6), there should be no collision
@@ -281,12 +329,16 @@ fn test_maximize_collision_no_match() {
 #[test]
 fn test_maximize_collision_overlapping_same_file() {
     // Test overlap detection in same file
-    let file_hashes = vec![
-        vec![1, 2, 3, 4, 5, 6, 7, 8],
-    ];
+    let file_hashes = vec![vec![1, 2, 3, 4, 5, 6, 7, 8]];
 
-    let left = LineId { file_id: 0, line_number: 0 };
-    let right = LineId { file_id: 0, line_number: 2 }; // Overlapping in same file
+    let left = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right = LineId {
+        file_id: 0,
+        line_number: 2,
+    }; // Overlapping in same file
 
     let collision = maximize_collision(&file_hashes, &left, &right, 3);
     assert!(collision.is_none()); // Should be None due to overlap
@@ -312,7 +364,7 @@ fn test_complex_rolling_hash_patterns() {
 
         // Verify positions are in ascending order
         for i in 1..rolling.len() {
-            assert!(rolling[i].1 > rolling[i-1].1);
+            assert!(rolling[i].1 > rolling[i - 1].1);
         }
     }
 
@@ -339,7 +391,7 @@ fn test_file_signatures_complex_content() {
     writeln!(temp_file, "}}").expect("Write failed");
 
     let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
-    let signatures = file_signatures(temp_path);
+    let signatures = file_signatures(temp_path).expect("Failed to get file signatures");
 
     assert_eq!(signatures.len(), 7);
 
@@ -384,9 +436,9 @@ fn test_collision_with_multiple_files() {
     let path2 = file2.path().to_str().expect("Failed to get path2");
     let path3 = file3.path().to_str().expect("Failed to get path3");
 
-    let sig1 = file_signatures(path1);
-    let sig2 = file_signatures(path2);
-    let sig3 = file_signatures(path3);
+    let sig1 = file_signatures(path1).expect("Failed to get signatures for file1");
+    let sig2 = file_signatures(path2).expect("Failed to get signatures for file2");
+    let sig3 = file_signatures(path3).expect("Failed to get signatures for file3");
 
     assert_eq!(sig1.len(), 4);
     assert_eq!(sig2.len(), 5);
@@ -428,8 +480,14 @@ fn test_mixed_match_no_match_sequences() {
     let file_hashes = vec![signatures1, signatures2];
 
     // Test first matching sequence [1,2,3]
-    let left1 = LineId { file_id: 0, line_number: 0 };
-    let right1 = LineId { file_id: 1, line_number: 0 };
+    let left1 = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right1 = LineId {
+        file_id: 1,
+        line_number: 0,
+    };
     let collision1 = maximize_collision(&file_hashes, &left1, &right1, 2);
 
     assert!(collision1.is_some());
@@ -437,8 +495,14 @@ fn test_mixed_match_no_match_sequences() {
     assert_eq!(collision1.num_lines, 3); // [1,2,3]
 
     // Test second matching sequence [6,7,8] - should start at different positions
-    let left2 = LineId { file_id: 0, line_number: 5 };
-    let right2 = LineId { file_id: 1, line_number: 5 };
+    let left2 = LineId {
+        file_id: 0,
+        line_number: 5,
+    };
+    let right2 = LineId {
+        file_id: 1,
+        line_number: 5,
+    };
     let collision2 = maximize_collision(&file_hashes, &left2, &right2, 2);
 
     assert!(collision2.is_some());
@@ -446,8 +510,14 @@ fn test_mixed_match_no_match_sequences() {
     assert_eq!(collision2.num_lines, 3); // [6,7,8]
 
     // Test non-matching sequence in the middle
-    let left3 = LineId { file_id: 0, line_number: 3 };
-    let right3 = LineId { file_id: 1, line_number: 3 };
+    let left3 = LineId {
+        file_id: 0,
+        line_number: 3,
+    };
+    let right3 = LineId {
+        file_id: 1,
+        line_number: 3,
+    };
     let collision3 = maximize_collision(&file_hashes, &left3, &right3, 2);
 
     // Should not match [4,5] vs [99,98] - might return Some with 0 lines
@@ -459,17 +529,19 @@ fn test_mixed_match_no_match_sequences() {
 #[test]
 fn test_edge_case_single_line_files() {
     // Test files with only one line
-    let file_hashes = vec![
-        vec![42],
-        vec![42],
-        vec![99],
-    ];
+    let file_hashes = vec![vec![42], vec![42], vec![99]];
 
     let min_lines = 1;
 
     // Should match between files 0 and 1
-    let left = LineId { file_id: 0, line_number: 0 };
-    let right = LineId { file_id: 1, line_number: 0 };
+    let left = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right = LineId {
+        file_id: 1,
+        line_number: 0,
+    };
     let collision = maximize_collision(&file_hashes, &left, &right, min_lines);
 
     assert!(collision.is_some());
@@ -477,7 +549,10 @@ fn test_edge_case_single_line_files() {
     assert_eq!(collision.num_lines, 1);
 
     // Should not match between files 0 and 2 (42 != 99)
-    let right2 = LineId { file_id: 2, line_number: 0 };
+    let right2 = LineId {
+        file_id: 2,
+        line_number: 0,
+    };
     let collision2 = maximize_collision(&file_hashes, &left, &right2, min_lines);
     // maximize_collision might return Some with 0 lines instead of None
     if let Some(collision2) = collision2 {
@@ -488,14 +563,17 @@ fn test_edge_case_single_line_files() {
 #[test]
 fn test_end_of_file_boundary_conditions() {
     // Test matching sequences that extend to end of file
-    let file_hashes = vec![
-        vec![1, 2, 3, 4, 5],
-        vec![99, 98, 3, 4, 5],
-    ];
+    let file_hashes = vec![vec![1, 2, 3, 4, 5], vec![99, 98, 3, 4, 5]];
 
     // Test match at end of both files
-    let left = LineId { file_id: 0, line_number: 2 };
-    let right = LineId { file_id: 1, line_number: 2 };
+    let left = LineId {
+        file_id: 0,
+        line_number: 2,
+    };
+    let right = LineId {
+        file_id: 1,
+        line_number: 2,
+    };
     let collision = maximize_collision(&file_hashes, &left, &right, 2);
 
     assert!(collision.is_some());
@@ -503,13 +581,16 @@ fn test_end_of_file_boundary_conditions() {
     assert_eq!(collision.num_lines, 3); // Should match [3,4,5]
 
     // Test when one file is shorter
-    let file_hashes_short = vec![
-        vec![1, 2, 3, 4, 5, 6],
-        vec![1, 2, 3],
-    ];
+    let file_hashes_short = vec![vec![1, 2, 3, 4, 5, 6], vec![1, 2, 3]];
 
-    let left_short = LineId { file_id: 0, line_number: 0 };
-    let right_short = LineId { file_id: 1, line_number: 0 };
+    let left_short = LineId {
+        file_id: 0,
+        line_number: 0,
+    };
+    let right_short = LineId {
+        file_id: 1,
+        line_number: 0,
+    };
     let collision_short = maximize_collision(&file_hashes_short, &left_short, &right_short, 2);
 
     assert!(collision_short.is_some());
@@ -572,7 +653,7 @@ fn test_large_file_with_repeating_sections_and_random_separators() {
     }
 
     let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
-    let signatures = file_signatures(temp_path);
+    let signatures = file_signatures(temp_path).expect("Failed to get file signatures");
 
     // Verify we have the expected number of lines
     // 5 sections * 12 lines + 4 separators = 64 lines
@@ -580,15 +661,16 @@ fn test_large_file_with_repeating_sections_and_random_separators() {
 
     // Test rolling hashes with different window sizes
     let rolling_12 = rolling_hashes(&signatures, 12); // Exact pattern size
-    let rolling_6 = rolling_hashes(&signatures, 6);   // Half pattern size
-    let rolling_3 = rolling_hashes(&signatures, 3);   // Small window
+    let rolling_6 = rolling_hashes(&signatures, 6); // Half pattern size
+    let rolling_3 = rolling_hashes(&signatures, 3); // Small window
 
     // With 12-line windows, we should find 5 patterns but separated by single lines
     // So the algorithm should detect multiple collisions
     assert!(!rolling_12.is_empty());
 
     // Calculate expected pattern hash
-    let pattern_hashes: Vec<u64> = pattern_lines.iter()
+    let pattern_hashes: Vec<u64> = pattern_lines
+        .iter()
         .map(|line| calculate_hash(line.trim()))
         .collect();
 
@@ -611,8 +693,11 @@ fn test_large_file_with_repeating_sections_and_random_separators() {
     // (each separated by 12 lines + 1 separator = 13 positions apart, except the last)
     let expected_positions = vec![0, 13, 26, 39, 52];
 
-    assert!(pattern_positions.len() >= 3,
-        "Should find at least 3 pattern occurrences, found {}", pattern_positions.len());
+    assert!(
+        pattern_positions.len() >= 3,
+        "Should find at least 3 pattern occurrences, found {}",
+        pattern_positions.len()
+    );
 
     // Verify that we found some of the expected positions
     let mut found_expected = 0;
@@ -621,14 +706,21 @@ fn test_large_file_with_repeating_sections_and_random_separators() {
             found_expected += 1;
         }
     }
-    assert!(found_expected >= 2,
-        "Should find at least 2 expected positions, found {}", found_expected);
+    assert!(
+        found_expected >= 2,
+        "Should find at least 2 expected positions, found {}",
+        found_expected
+    );
 
     // Test smaller window sizes to ensure we detect partial overlaps
-    assert!(rolling_6.len() > rolling_12.len(),
-        "6-line windows should produce more matches than 12-line windows");
-    assert!(rolling_3.len() > rolling_6.len(),
-        "3-line windows should produce more matches than 6-line windows");
+    assert!(
+        rolling_6.len() > rolling_12.len(),
+        "6-line windows should produce more matches than 12-line windows"
+    );
+    assert!(
+        rolling_3.len() > rolling_6.len(),
+        "3-line windows should produce more matches than 6-line windows"
+    );
 
     // Verify that identical sub-patterns are detected
     // The first 6 lines should match across all repetitions
@@ -646,8 +738,11 @@ fn test_large_file_with_repeating_sections_and_random_separators() {
         }
     }
 
-    assert!(six_line_matches >= 3,
-        "Should find at least 3 matches for 6-line sub-pattern, found {}", six_line_matches);
+    assert!(
+        six_line_matches >= 3,
+        "Should find at least 3 matches for 6-line sub-pattern, found {}",
+        six_line_matches
+    );
 }
 
 #[test]
@@ -709,13 +804,21 @@ fn test_collision_detection_with_interrupted_patterns() {
         }
     }
 
-    assert!(collision_count > 0, "Should find at least one collision pattern");
-    assert!(max_occurrences >= 3, "Should find patterns that repeat at least 3 times");
+    assert!(
+        collision_count > 0,
+        "Should find at least one collision pattern"
+    );
+    assert!(
+        max_occurrences >= 3,
+        "Should find patterns that repeat at least 3 times"
+    );
 
     // Test with different minimum line requirements
     let rolling_3 = rolling_hashes(&signatures, 3);
-    assert!(rolling_3.len() > rolling.len(),
-        "Smaller window should find more potential matches");
+    assert!(
+        rolling_3.len() > rolling.len(),
+        "Smaller window should find more potential matches"
+    );
 }
 
 #[test]
@@ -756,11 +859,11 @@ fn test_real_world_firmware_hex_pattern() {
     }
 
     let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
-    let signatures = file_signatures(temp_path);
+    let signatures = file_signatures(temp_path).expect("Failed to get file signatures");
 
     // Test various window sizes for pattern detection
-    let rolling_4 = rolling_hashes(&signatures, 4);  // Full pattern
-    let rolling_2 = rolling_hashes(&signatures, 2);  // Half pattern
+    let rolling_4 = rolling_hashes(&signatures, 4); // Full pattern
+    let rolling_2 = rolling_hashes(&signatures, 2); // Half pattern
 
     assert!(!rolling_4.is_empty(), "Should detect 4-line patterns");
     assert!(!rolling_2.is_empty(), "Should detect 2-line patterns");
@@ -771,17 +874,23 @@ fn test_real_world_firmware_hex_pattern() {
         *pattern_frequency.entry(*hash).or_insert(0) += 1;
     }
 
-    let repeated_patterns = pattern_frequency.values()
+    let repeated_patterns = pattern_frequency
+        .values()
         .filter(|&&count| count > 1)
         .count();
 
-    assert!(repeated_patterns > 0,
-        "Should find repeated patterns in firmware-like hex data");
+    assert!(
+        repeated_patterns > 0,
+        "Should find repeated patterns in firmware-like hex data"
+    );
 
     // Verify that most patterns repeat (due to the regular structure)
     let total_patterns = pattern_frequency.len();
     let repetition_ratio = repeated_patterns as f64 / total_patterns as f64;
 
-    assert!(repetition_ratio > 0.1,
-        "At least 10% of patterns should be repeated, got {:.2}", repetition_ratio);
+    assert!(
+        repetition_ratio > 0.1,
+        "At least 10% of patterns should be repeated, got {:.2}",
+        repetition_ratio
+    );
 }

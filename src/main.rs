@@ -13,7 +13,7 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere";
 
-fn main() -> Result<(), rags_rs::Error> {
+fn main() -> std::result::Result<(), rags_rs::Error> {
     let mut opts = Options::default();
     let mut parser = argparse!();
     parser
@@ -71,10 +71,22 @@ fn main() -> Result<(), rags_rs::Error> {
         }
 
         if !opts.ignore.is_empty() {
-            ignore_hash = get_ignore_hashes(&opts.ignore);
+            ignore_hash = match get_ignore_hashes(&opts.ignore) {
+                Ok(hashes) => hashes,
+                Err(e) => {
+                    eprintln!("ERROR: Failed to load ignore hashes: {}", e);
+                    std::process::exit(2);
+                }
+            };
         }
 
-        let results_hash = process_files(&opts);
+        let results_hash = match process_files(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                eprintln!("ERROR: Failed to process files: {}", e);
+                std::process::exit(1);
+            }
+        };
         process_report(results_hash, &opts, &ignore_hash);
     }
 

@@ -15,6 +15,8 @@ use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
 use std::collections::{hash_map::DefaultHasher, HashMap, VecDeque};
+use std::error::Error;
+use std::fmt;
 use std::fs::{canonicalize, File};
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
@@ -29,6 +31,60 @@ lazy_static! {
     static ref FILE_LOOKUP: Mutex<FileId> = Mutex::new(FileId::new());
 }
 
+/// Custom error type for duplihere operations
+#[derive(Debug)]
+pub enum DupliError {
+    Io(std::io::Error),
+    Glob(glob::GlobError),
+    Pattern(glob::PatternError),
+    Mutex(String),
+    Serialization(serde_json::Error),
+    Parse(String),
+    FileLookup(String),
+}
+
+impl fmt::Display for DupliError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DupliError::Io(e) => write!(f, "I/O error: {}", e),
+            DupliError::Glob(e) => write!(f, "Glob error: {}", e),
+            DupliError::Pattern(e) => write!(f, "Pattern error: {}", e),
+            DupliError::Mutex(e) => write!(f, "Mutex error: {}", e),
+            DupliError::Serialization(e) => write!(f, "Serialization error: {}", e),
+            DupliError::Parse(e) => write!(f, "Parse error: {}", e),
+            DupliError::FileLookup(e) => write!(f, "File lookup error: {}", e),
+        }
+    }
+}
+
+impl Error for DupliError {}
+
+impl From<std::io::Error> for DupliError {
+    fn from(error: std::io::Error) -> Self {
+        DupliError::Io(error)
+    }
+}
+
+impl From<glob::GlobError> for DupliError {
+    fn from(error: glob::GlobError) -> Self {
+        DupliError::Glob(error)
+    }
+}
+
+impl From<glob::PatternError> for DupliError {
+    fn from(error: glob::PatternError) -> Self {
+        DupliError::Pattern(error)
+    }
+}
+
+impl From<serde_json::Error> for DupliError {
+    fn from(error: serde_json::Error) -> Self {
+        DupliError::Serialization(error)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, DupliError>;
+
 /// Generates the hash for 'T' which in this case is a utf-8 string.
 pub fn calculate_hash<T: Hash>(t: T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -38,36 +94,24 @@ pub fn calculate_hash<T: Hash>(t: T) -> u64 {
 
 /// For a given file, walk it line by line calculating, removing leading and trailing WS and
 /// calculating the signatures for each line, return the information as a vector of hash signatures.
-pub fn file_signatures(filename: &str) -> Vec<u64> {
-    let file = match File::open(filename) {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!("ERROR: Unable to open {}, reason {}", filename, e);
-            return Vec::new();
-        }
-    };
-
+pub fn file_signatures(filename: &str) -> Result<Vec<u64>> {
+    let file = File::open(filename)?;
     let mut rc: Vec<u64> = Vec::new();
     let mut reader = BufReader::new(file);
     let mut buf: Vec<u8> = vec![];
 
     loop {
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(num_bytes) => {
-                if num_bytes == 0 {
-                    return rc;
-                } else {
-                    let l = String::from_utf8_lossy(&buf);
-                    rc.push(calculate_hash(l.trim()));
-                    buf.clear();
-                }
-            }
-            Err(e) => {
-                eprintln!("WARNING: Error processing file {} reason {}", filename, e);
-                return rc;
-            }
+        let num_bytes = reader.read_until(b'\n', &mut buf)?;
+        if num_bytes == 0 {
+            break;
+        } else {
+            let l = String::from_utf8_lossy(&buf);
+            rc.push(calculate_hash(l.trim()));
+            buf.clear();
         }
     }
+
+    Ok(rc)
 }
 
 /// For a specific file, calculate the hash signature for 'min_lines' in size using a sliding window
@@ -101,17 +145,15 @@ fn process_file(
     min_lines: usize,
     file_hashes: &Mutex<Vec<Vec<u64>>>,
     collision_hashes: &DashMap<u64, Vec<LineId>>,
-) {
-    let file_signatures = file_signatures(filename);
+) -> Result<()> {
+    let file_signatures = file_signatures(filename)?;
     let file_rolling_hashes = rolling_hashes(&file_signatures, min_lines);
 
-    match file_hashes.lock() {
-        Ok(mut hashes) => hashes[file_id as usize] = file_signatures,
-        Err(e) => {
-            eprintln!("ERROR: Failed to acquire lock on file_hashes: {}", e);
-            return;
-        }
-    }
+    let mut hashes = file_hashes
+        .lock()
+        .map_err(|e| DupliError::Mutex(format!("Failed to acquire lock on file_hashes: {}", e)))?;
+    hashes[file_id as usize] = file_signatures;
+    drop(hashes); // Release lock early
 
     for e in file_rolling_hashes {
         let (r_hash, line_number) = e;
@@ -123,6 +165,8 @@ fn process_file(
                 line_number,
             });
     }
+
+    Ok(())
 }
 
 /// Used to record a section of duplicated text.  We store the hash signature, how many lines
@@ -137,19 +181,13 @@ pub struct Collision {
 
 /// Used to convert a collision in our results to JSON for it.
 impl Serialize for Collision {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let file_lookup_lock = match FILE_LOOKUP.lock() {
-            Ok(lock) => lock,
-            Err(e) => {
-                eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
-                return Err(serde::ser::Error::custom(
-                    "Failed to acquire FILE_LOOKUP lock",
-                ));
-            }
-        };
+        let file_lookup_lock = FILE_LOOKUP.lock().map_err(|e| {
+            serde::ser::Error::custom(format!("Failed to acquire FILE_LOOKUP lock: {}", e))
+        })?;
         let files_infos: Vec<(String, u32)> = self
             .start_lines
             .iter()
@@ -310,39 +348,24 @@ pub fn maximize_collision(
 }
 
 /// Given a file name, a start line number, and number of lines, dump the text into the output.
-fn print_dup_text(filename: &str, start_line: usize, count: usize) {
-    let file = match File::open(filename) {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!(
-                "ERROR: Unable to re-open file {} for printing (deleted during proccessing): {}",
-                filename, e
-            );
-            return;
-        }
-    };
+fn print_dup_text(filename: &str, start_line: usize, count: usize) -> Result<()> {
+    let file = File::open(filename)?;
     let mut reader = BufReader::new(file);
     let mut line_number = 0;
     let end = start_line + count;
 
     while line_number < end {
         let mut buf: Vec<u8> = vec![];
-        match reader.read_until(0xA, &mut buf) {
-            Ok(num_bytes) => {
-                if num_bytes == 0 {
-                    break;
-                } else if line_number >= start_line {
-                    print!("{}", String::from_utf8_lossy(&buf));
-                }
-
-                line_number += 1;
-            }
-            Err(e) => {
-                eprintln!("WARNING: Error processing file {} reason {}", filename, e);
-                break;
-            }
+        let num_bytes = reader.read_until(0xA, &mut buf)?;
+        if num_bytes == 0 {
+            break;
+        } else if line_number >= start_line {
+            print!("{}", String::from_utf8_lossy(&buf));
         }
+        line_number += 1;
     }
+
+    Ok(())
 }
 
 /// Display the output as text or structured JSON.
@@ -350,16 +373,12 @@ pub fn print_report(
     printable_results: &[Collision],
     opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
-) {
+) -> Result<()> {
     let mut num_lines: u64 = 0;
     let mut ignored: u64 = 0;
-    let file_lookup_locked = match FILE_LOOKUP.lock() {
-        Ok(lock) => lock,
-        Err(e) => {
-            eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
-            return;
-        }
-    };
+    let file_lookup_locked = FILE_LOOKUP
+        .lock()
+        .map_err(|e| DupliError::Mutex(format!("Failed to acquire lock on FILE_LOOKUP: {}", e)))?;
 
     for p in printable_results.iter() {
         if ignore_hashes.contains_key(&p.key) {
@@ -388,11 +407,13 @@ pub fn print_report(
                 }
 
                 if opts.print {
-                    print_dup_text(
+                    if let Err(e) = print_dup_text(
                         &file_lookup_locked.id_to_name(p.start_lines[0usize].file_id),
                         p.start_lines[0usize].line_number as usize,
                         p.num_lines as usize,
-                    );
+                    ) {
+                        eprintln!("WARNING: Failed to print duplicate text: {}", e);
+                    }
                 }
             }
         }
@@ -413,14 +434,11 @@ pub fn print_report(
             num_ignored: ignored,
             duplicates: printable_results,
         };
-        match serde_json::to_string_pretty(&r) {
-            Ok(json) => println!("{}", json),
-            Err(e) => {
-                eprintln!("ERROR: Failed to serialize results to JSON: {}", e);
-                process::exit(1);
-            }
-        }
+        let json = serde_json::to_string_pretty(&r)?;
+        println!("{}", json);
     }
+
+    Ok(())
 }
 
 /// When we have more than one region of text that matches another we will walk all combination
@@ -514,52 +532,36 @@ pub fn process_report(
             .then_with(|| a.start_lines[0].file_id.cmp(&b.start_lines[0].file_id))
     });
 
-    print_report(&printable_results, opts, ignore_hashes);
+    if let Err(e) = print_report(&printable_results, opts, ignore_hashes) {
+        eprintln!("ERROR: Failed to print report: {}", e);
+        process::exit(1);
+    }
 }
 
 /// Open the user supplied file which contains the hash signatures for text that we don't
 /// want to report on.
-pub fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
+pub fn get_ignore_hashes(file_name: &str) -> Result<HashMap<u64, bool>> {
     let mut ignores: HashMap<u64, bool> = HashMap::new();
+    let fh = File::open(file_name)?;
+    let buf = BufReader::new(fh);
 
-    let fh = File::open(file_name);
+    for line in buf.lines() {
+        let t = line?;
+        let l = t.trim();
 
-    match fh {
-        Ok(fh) => {
-            let buf = BufReader::new(fh);
-
-            for line in buf.lines() {
-                let t = match line {
-                    Ok(line_content) => line_content,
-                    Err(e) => {
-                        eprintln!(
-                            "WARNING: Error reading line from ignore file {}: {}",
-                            file_name, e
-                        );
-                        continue;
-                    }
-                };
-                let l = t.trim();
-
-                if !l.is_empty() && !l.starts_with('#') {
-                    if let Ok(hv) = l.parse::<u64>() {
-                        ignores.insert(hv, true);
-                    } else {
-                        eprintln!("WARNING: Ignore file contains invalid hash value \"{}\"", l);
-                    }
+        if !l.is_empty() && !l.starts_with('#') {
+            match l.parse::<u64>() {
+                Ok(hv) => {
+                    ignores.insert(hv, true);
+                }
+                Err(_) => {
+                    eprintln!("WARNING: Ignore file contains invalid hash value \"{}\"", l);
                 }
             }
         }
-        Err(e) => {
-            eprintln!(
-                "Unable to open supplied ignore file {}, reason: {}",
-                file_name, e
-            );
-            process::exit(2);
-        }
     }
 
-    ignores
+    Ok(ignores)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -578,6 +580,12 @@ pub struct FileId {
     pub num_files: u32,
     pub index_to_name: Vec<Arc<String>>,
     pub name_to_index: HashMap<Arc<String>, u32>,
+}
+
+impl Default for FileId {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FileId {
@@ -621,33 +629,17 @@ impl FileId {
 }
 
 /// Get all files matching `file_globs` and update the global `FILE_LOOKUP`
-pub fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
+pub fn files_to_process(file_globs: &[String]) -> Result<Vec<(u32, Arc<String>)>> {
     let mut files_to_process = Vec::new();
     // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
-    let mut file_lookup_locked = match FILE_LOOKUP.lock() {
-        Ok(lock) => lock,
-        Err(e) => {
-            eprintln!("ERROR: Failed to acquire lock on FILE_LOOKUP: {}", e);
-            process::exit(1);
-        }
-    };
+    let mut file_lookup_locked = FILE_LOOKUP
+        .lock()
+        .map_err(|e| DupliError::Mutex(format!("Failed to acquire lock on FILE_LOOKUP: {}", e)))?;
 
     for g in file_globs {
-        let entries = match glob(g) {
-            Ok(entries) => entries,
-            Err(e) => {
-                eprintln!("Bad glob pattern supplied '{}', error: {}", g, e);
-                process::exit(1);
-            }
-        };
+        let entries = glob(g)?;
         for filename in entries {
-            let specific_file = match filename {
-                Ok(specific_file) => specific_file,
-                Err(e) => {
-                    eprintln!("Unable to process {:?}", e);
-                    process::exit(1);
-                }
-            };
+            let specific_file = filename?;
             if !specific_file.is_file() {
                 continue;
             }
@@ -672,7 +664,7 @@ pub fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
         }
     }
 
-    files_to_process
+    Ok(files_to_process)
 }
 
 /// Command line options.
@@ -701,30 +693,28 @@ impl Default for Options {
 }
 
 /// Process files and find duplicate sections
-pub fn process_files(opts: &Options) -> DashMap<u64, Collision> {
-    let files_to_process: Vec<(u32, Arc<String>)> = files_to_process(&opts.file_globs);
+pub fn process_files(opts: &Options) -> Result<DashMap<u64, Collision>> {
+    let files_to_process = files_to_process(&opts.file_globs)?;
 
     let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
-    let file_hashes: Mutex<Vec<Vec<u64>>> =
-        Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
+    let file_hashes: Mutex<Vec<Vec<u64>>> = Mutex::new(vec![vec![0; 0]; files_to_process.len()]);
 
+    // Process files in parallel and log any errors
     files_to_process.par_iter().for_each(|e| {
-        process_file(
+        if let Err(err) = process_file(
             e.0,
             &e.1,
             opts.lines as usize,
             &file_hashes,
             &collision_hashes,
-        )
+        ) {
+            eprintln!("WARNING: Failed to process file {}: {}", e.1, err);
+        }
     });
 
-    let mut hashes = match file_hashes.lock() {
-        Ok(hashes) => hashes,
-        Err(e) => {
-            eprintln!("ERROR: Failed to acquire lock on file_hashes: {}", e);
-            process::exit(1);
-        }
-    };
+    let mut hashes = file_hashes
+        .lock()
+        .map_err(|e| DupliError::Mutex(format!("Failed to acquire lock on file_hashes: {}", e)))?;
 
-    find_collisions(collision_hashes, &mut hashes, &opts)
+    Ok(find_collisions(collision_hashes, &mut hashes, opts))
 }

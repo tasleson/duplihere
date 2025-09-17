@@ -1305,4 +1305,275 @@ mod tests {
         let collision_short = collision_short.unwrap();
         assert_eq!(collision_short.num_lines, 3); // Limited by shorter file
     }
+
+    #[test]
+    fn test_large_file_with_repeating_sections_and_random_separators() {
+        // Simulate a large file with repeating 12-line sections separated by random lines
+        // This mimics real-world scenarios like configuration files, log patterns, or code templates
+
+        // Define our 12-line repeating pattern
+        let pattern_lines = vec![
+            "function processData() {",
+            "    let data = getData();",
+            "    if (data.isEmpty()) {",
+            "        return null;",
+            "    }",
+            "    let result = transform(data);",
+            "    if (result.isValid()) {",
+            "        save(result);",
+            "        return result;",
+            "    } else {",
+            "        throw new Error('Invalid result');",
+            "    }",
+        ];
+
+        // Create a large content vector with repeating sections and random separators
+        let mut file_content = Vec::new();
+        let random_separators = vec![
+            "// Random comment 1",
+            "/* DEBUG: checkpoint A */",
+            "// TODO: optimize this section",
+            "/* FIXME: memory leak here */",
+            "// Version: 1.2.3",
+            "/* Last modified: 2023-01-01 */",
+            "// Author: developer@example.com",
+            "/* Performance: needs improvement */",
+        ];
+
+        // Build content: pattern + random + pattern + random + pattern, etc.
+        for section in 0..5 {
+            // Add the 12-line pattern
+            for line in &pattern_lines {
+                file_content.push(line.to_string());
+            }
+
+            // Add a random separator (except after the last section)
+            if section < 4 {
+                let separator_idx = section % random_separators.len();
+                file_content.push(random_separators[separator_idx].to_string());
+            }
+        }
+
+        // Create a temporary file with this content
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        for line in &file_content {
+            writeln!(temp_file, "{}", line).expect("Failed to write line");
+        }
+
+        let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
+        let signatures = file_signatures(temp_path);
+
+        // Verify we have the expected number of lines
+        // 5 sections * 12 lines + 4 separators = 64 lines
+        assert_eq!(signatures.len(), 64);
+
+        // Test rolling hashes with different window sizes
+        let rolling_12 = rolling_hashes(&signatures, 12); // Exact pattern size
+        let rolling_6 = rolling_hashes(&signatures, 6);   // Half pattern size
+        let rolling_3 = rolling_hashes(&signatures, 3);   // Small window
+
+        // With 12-line windows, we should find 5 patterns but separated by single lines
+        // So the algorithm should detect multiple collisions
+        assert!(!rolling_12.is_empty());
+
+        // Calculate expected pattern hash
+        let pattern_hashes: Vec<u64> = pattern_lines.iter()
+            .map(|line| calculate_hash(line.trim()))
+            .collect();
+
+        // Create the hash for the full 12-line pattern
+        let mut full_pattern_hasher = std::collections::hash_map::DefaultHasher::new();
+        for &hash in &pattern_hashes {
+            hash.hash(&mut full_pattern_hasher);
+        }
+        let expected_pattern_hash = full_pattern_hasher.finish();
+
+        // Find all occurrences of our pattern
+        let mut pattern_positions = Vec::new();
+        for (hash, pos) in &rolling_12 {
+            if *hash == expected_pattern_hash {
+                pattern_positions.push(*pos);
+            }
+        }
+
+        // We should find the pattern at positions: 0, 13, 26, 39, 52
+        // (each separated by 12 lines + 1 separator = 13 positions apart, except the last)
+        let expected_positions = vec![0, 13, 26, 39, 52];
+
+        assert!(pattern_positions.len() >= 3,
+            "Should find at least 3 pattern occurrences, found {}", pattern_positions.len());
+
+        // Verify that we found some of the expected positions
+        let mut found_expected = 0;
+        for expected_pos in &expected_positions {
+            if pattern_positions.contains(expected_pos) {
+                found_expected += 1;
+            }
+        }
+        assert!(found_expected >= 2,
+            "Should find at least 2 expected positions, found {}", found_expected);
+
+        // Test smaller window sizes to ensure we detect partial overlaps
+        assert!(rolling_6.len() > rolling_12.len(),
+            "6-line windows should produce more matches than 12-line windows");
+        assert!(rolling_3.len() > rolling_6.len(),
+            "3-line windows should produce more matches than 6-line windows");
+
+        // Verify that identical sub-patterns are detected
+        // The first 6 lines should match across all repetitions
+        let first_6_pattern_hashes = &pattern_hashes[0..6];
+        let mut first_6_hasher = std::collections::hash_map::DefaultHasher::new();
+        for &hash in first_6_pattern_hashes {
+            hash.hash(&mut first_6_hasher);
+        }
+        let expected_6_line_hash = first_6_hasher.finish();
+
+        let mut six_line_matches = 0;
+        for (hash, _pos) in &rolling_6 {
+            if *hash == expected_6_line_hash {
+                six_line_matches += 1;
+            }
+        }
+
+        assert!(six_line_matches >= 3,
+            "Should find at least 3 matches for 6-line sub-pattern, found {}", six_line_matches);
+    }
+
+    #[test]
+    fn test_collision_detection_with_interrupted_patterns() {
+        // Test the collision detection system with the repeating pattern scenario
+        use dashmap::DashMap;
+        use std::sync::Mutex;
+
+        // Create signature data that simulates our repeating pattern scenario
+        let pattern_sigs = vec![100, 101, 102, 103, 104, 105]; // 6-line pattern
+        let separator_sig = 999; // Random separator
+
+        // Build file signatures: pattern + separator + pattern + separator + pattern
+        let mut file_sigs = Vec::new();
+        for _repeat in 0..3 {
+            file_sigs.extend_from_slice(&pattern_sigs);
+            file_sigs.push(separator_sig);
+        }
+        file_sigs.extend_from_slice(&pattern_sigs); // Final pattern without separator
+
+        // Total: 3*(6+1) + 6 = 27 lines
+
+        let file_hashes = Mutex::new(vec![file_sigs]);
+        let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
+
+        // Simulate process_file behavior
+        let file_id = 0;
+        let min_lines = 6;
+
+        // Get the file signatures and compute rolling hashes
+        let signatures = match file_hashes.lock() {
+            Ok(hashes) => hashes[0].clone(),
+            Err(_) => panic!("Failed to lock file_hashes"),
+        };
+
+        let rolling = rolling_hashes(&signatures, min_lines);
+
+        // Register rolling hashes in collision map
+        for (r_hash, line_number) in &rolling {
+            collision_hashes
+                .entry(*r_hash)
+                .or_insert_with(|| Vec::with_capacity(1))
+                .push(LineId {
+                    file_id,
+                    line_number: *line_number,
+                });
+        }
+
+        // Verify collision detection
+        assert!(!collision_hashes.is_empty(), "Should detect some patterns");
+
+        // Find entries with multiple occurrences (collisions)
+        let mut collision_count = 0;
+        let mut max_occurrences = 0;
+
+        for entry in collision_hashes.iter() {
+            let occurrences = entry.value().len();
+            if occurrences > 1 {
+                collision_count += 1;
+                max_occurrences = max_occurrences.max(occurrences);
+            }
+        }
+
+        assert!(collision_count > 0, "Should find at least one collision pattern");
+        assert!(max_occurrences >= 3, "Should find patterns that repeat at least 3 times");
+
+        // Test with different minimum line requirements
+        let rolling_3 = rolling_hashes(&signatures, 3);
+        assert!(rolling_3.len() > rolling.len(),
+            "Smaller window should find more potential matches");
+    }
+
+    #[test]
+    fn test_real_world_firmware_hex_pattern() {
+        // Test scenario inspired by firmware blobs stored as hex text
+        // These often have highly repetitive patterns with occasional variations
+
+        let hex_pattern = vec![
+            "0x00, 0x01, 0x02, 0x03,",
+            "0x04, 0x05, 0x06, 0x07,",
+            "0x08, 0x09, 0x0A, 0x0B,",
+            "0x0C, 0x0D, 0x0E, 0x0F,",
+        ];
+
+        let mut content = Vec::new();
+
+        // Repeat the hex pattern 10 times with occasional variations
+        for i in 0..10 {
+            for line in &hex_pattern {
+                if i % 3 == 0 && line.contains("0x0C") {
+                    // Inject variation every 3rd repetition on a specific line
+                    content.push(format!("0x0C, 0x0D, 0x{:02X}, 0x0F,", i + 0x10));
+                } else {
+                    content.push(line.to_string());
+                }
+            }
+
+            // Add occasional separator comment
+            if i % 4 == 0 && i > 0 {
+                content.push(format!("// Block {}", i / 4));
+            }
+        }
+
+        // Create temp file and test
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        for line in &content {
+            writeln!(temp_file, "{}", line).expect("Failed to write line");
+        }
+
+        let temp_path = temp_file.path().to_str().expect("Failed to get temp path");
+        let signatures = file_signatures(temp_path);
+
+        // Test various window sizes for pattern detection
+        let rolling_4 = rolling_hashes(&signatures, 4);  // Full pattern
+        let rolling_2 = rolling_hashes(&signatures, 2);  // Half pattern
+
+        assert!(!rolling_4.is_empty(), "Should detect 4-line patterns");
+        assert!(!rolling_2.is_empty(), "Should detect 2-line patterns");
+
+        // Count unique vs repeated patterns
+        let mut pattern_frequency = std::collections::HashMap::new();
+        for (hash, _pos) in &rolling_4 {
+            *pattern_frequency.entry(*hash).or_insert(0) += 1;
+        }
+
+        let repeated_patterns = pattern_frequency.values()
+            .filter(|&&count| count > 1)
+            .count();
+
+        assert!(repeated_patterns > 0,
+            "Should find repeated patterns in firmware-like hex data");
+
+        // Verify that most patterns repeat (due to the regular structure)
+        let total_patterns = pattern_frequency.len();
+        let repetition_ratio = repeated_patterns as f64 / total_patterns as f64;
+
+        assert!(repetition_ratio > 0.1,
+            "At least 10% of patterns should be repeated, got {:.2}", repetition_ratio);
+    }
 }

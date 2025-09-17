@@ -21,7 +21,7 @@ Developers are lazy, they don't change things :-)
 ### How
 
 ```bash
-duplihere - 0.9.0 - find duplicate text
+duplihere - 0.9.3 - find duplicate text
 
 usage: duplihere [-pj -l <number> -i <file name> -t <thread number>] -f <pattern or specific file>
 

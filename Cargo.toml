@@ -2,7 +2,7 @@
 name = "duplihere"
 version = "0.9.3"
 authors = ["Tony Asleson <tony.asleson@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

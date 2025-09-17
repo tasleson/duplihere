@@ -7,10 +7,7 @@
 //! This library provides functionality to find duplicate sections of text
 //! across one or more files by analyzing line signatures and rolling hashes.
 
-#[macro_use]
-extern crate lazy_static;
-
-extern crate dashmap;
+// Edition 2021 - extern crate declarations are no longer needed for most cases
 use glob::glob;
 use rayon::prelude::*;
 
@@ -26,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref FILE_LOOKUP: Mutex<FileId> = Mutex::new(FileId::new());

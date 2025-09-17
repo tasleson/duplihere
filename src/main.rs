@@ -3,8 +3,7 @@
 // Copyright (C) 2019-2023 Tony Asleson <tony.asleson@gmail.com>
 
 use duplihere::*;
-extern crate rags_rs as rags;
-use rags::argparse;
+use rags_rs::argparse;
 use rayon::ThreadPoolBuilder;
 
 static LONG_DESC: &str = "Find duplicate lines of text in one or more text files.
@@ -14,7 +13,7 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere";
 
-fn main() -> Result<(), rags::Error> {
+fn main() -> Result<(), rags_rs::Error> {
     let mut opts = Options::default();
     let mut parser = argparse!();
     parser

@@ -87,7 +87,10 @@ fn main() -> std::result::Result<(), rags_rs::Error> {
                 std::process::exit(1);
             }
         };
-        process_report(results_hash, &opts, &ignore_hash);
+        if let Err(e) = process_report(results_hash, &opts, &ignore_hash) {
+            eprintln!("ERROR: Failed to process report: {}", e);
+            std::process::exit(1);
+        }
     }
 
     Ok(())

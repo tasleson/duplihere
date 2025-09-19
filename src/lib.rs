@@ -22,7 +22,6 @@ use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
 #[cfg(windows)]
 use std::path::MAIN_SEPARATOR;
-use std::process;
 use std::sync::{Arc, Mutex};
 
 use dashmap::mapref::entry::Entry;
@@ -516,7 +515,7 @@ pub fn process_report(
     results_hash: DashMap<u64, Collision>,
     opts: &Options,
     ignore_hashes: &HashMap<u64, bool>,
-) {
+) -> Result<()> {
     let mut final_report: Vec<Collision> = results_hash.into_iter().map(|(_, v)| v).collect();
     final_report.par_sort_unstable_by(|a, b| a.num_lines.cmp(&b.num_lines).reverse());
 
@@ -547,10 +546,8 @@ pub fn process_report(
             .then_with(|| a.start_lines[0].file_id.cmp(&b.start_lines[0].file_id))
     });
 
-    if let Err(e) = print_report(&printable_results, opts, ignore_hashes) {
-        eprintln!("ERROR: Failed to print report: {}", e);
-        process::exit(1);
-    }
+    print_report(&printable_results, opts, ignore_hashes)?;
+    Ok(())
 }
 
 /// Open the user supplied file which contains the hash signatures for text that we don't
@@ -614,9 +611,9 @@ impl FileId {
 
     /// Given a file name, if it doesn't already exist we will store the information about which
     /// index it is stored in and it's value.
-    pub fn register_file(&mut self, file_name: Arc<String>) -> Option<u32> {
+    pub fn register_file(&mut self, file_name: Arc<String>) -> Result<Option<u32>> {
         if self.name_to_index.contains_key(&file_name) {
-            return None;
+            return Ok(None);
         }
         let num = self.num_files;
 
@@ -626,10 +623,12 @@ impl FileId {
         if let Some(v) = self.num_files.checked_add(1) {
             self.num_files = v;
         } else {
-            eprintln!("Number of files processed exceeds {}", u32::MAX);
-            process::exit(2);
+            return Err(DupliError::FileLookup(format!(
+                "Number of files processed exceeds {}",
+                u32::MAX
+            )));
         }
-        Some(num)
+        Ok(Some(num))
     }
 
     /// Given an id (integer) return the actual file name.
@@ -667,7 +666,7 @@ pub fn files_to_process(file_globs: &[String]) -> Result<Vec<(u32, Arc<String>)>
                     let normalized_path = normalize_path_separators(&c_name_str);
                     let name = Arc::new(normalized_path);
 
-                    if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name)) {
+                    if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name))? {
                         files_to_process.push((fid, Arc::clone(&name)));
                     }
                 }

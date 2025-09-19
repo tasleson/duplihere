@@ -99,18 +99,24 @@ fn test_file_id_register_file() {
 
     // Register first file
     let file1 = Arc::new("test1.txt".to_string());
-    let id1 = file_id.register_file(Arc::clone(&file1));
+    let id1 = file_id
+        .register_file(Arc::clone(&file1))
+        .expect("Failed to register file1");
     assert_eq!(id1, Some(0));
     assert_eq!(file_id.num_files, 1);
 
     // Register second file
     let file2 = Arc::new("test2.txt".to_string());
-    let id2 = file_id.register_file(Arc::clone(&file2));
+    let id2 = file_id
+        .register_file(Arc::clone(&file2))
+        .expect("Failed to register file2");
     assert_eq!(id2, Some(1));
     assert_eq!(file_id.num_files, 2);
 
     // Try to register same file again
-    let id1_again = file_id.register_file(Arc::clone(&file1));
+    let id1_again = file_id
+        .register_file(Arc::clone(&file1))
+        .expect("Failed to register file1 again");
     assert_eq!(id1_again, None);
     assert_eq!(file_id.num_files, 2); // Should not increment
 }
@@ -122,8 +128,12 @@ fn test_file_id_id_to_name() {
     let file1 = Arc::new("test1.txt".to_string());
     let file2 = Arc::new("test2.txt".to_string());
 
-    file_id.register_file(Arc::clone(&file1));
-    file_id.register_file(Arc::clone(&file2));
+    file_id
+        .register_file(Arc::clone(&file1))
+        .expect("Failed to register file1");
+    file_id
+        .register_file(Arc::clone(&file2))
+        .expect("Failed to register file2");
 
     assert_eq!(file_id.id_to_name(0), file1);
     assert_eq!(file_id.id_to_name(1), file2);
@@ -134,10 +144,14 @@ fn test_file_id_number_files() {
     let mut file_id = FileId::new();
     assert_eq!(file_id.number_files(), 0);
 
-    file_id.register_file(Arc::new("test1.txt".to_string()));
+    file_id
+        .register_file(Arc::new("test1.txt".to_string()))
+        .expect("Failed to register test1.txt");
     assert_eq!(file_id.number_files(), 1);
 
-    file_id.register_file(Arc::new("test2.txt".to_string()));
+    file_id
+        .register_file(Arc::new("test2.txt".to_string()))
+        .expect("Failed to register test2.txt");
     assert_eq!(file_id.number_files(), 2);
 }
 

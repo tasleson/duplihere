@@ -41,16 +41,29 @@ argument:                                        description
     -t, --threads <thread number>                number of threads to utilize. Set to 0 to match #cpu cores [default: 4]
 ```
 
-An example where we re-curse in a directory for python files and a directory
+An example where we recurse in a directory for python files and a directory
 that contains python files ...
+
+**Unix/Linux/macOS:**
 ```bash
 $ duplihere -l 10 -p -f '/home/user/somewhere/**/*.py' -f '/tmp/*.py'
 ```
 
+**Windows:**
+```cmd
+> duplihere -l 10 -p -f "C:\Users\user\somewhere\**\*.py" -f "C:\temp\*.py"
+```
+
 An example showing JSON output (not finalized)
 
+**Unix/Linux/macOS:**
 ```bash
 $ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j
+```
+
+**Windows:**
+```cmd
+> duplihere -f "C:\projects\linux\init\main.c" -l 5 -j
 ```
 
 ```json
@@ -76,6 +89,35 @@ $ duplihere -f /home/tasleson/projects/linux/init/main.c -l 5 -j
 }
 
 ```
+
+### Installation
+
+This project requires Rust to build and run.
+
+#### Installing Rust
+
+**Windows:**
+1. Download and install Rust from [rustup.rs](https://rustup.rs/)
+2. Open Command Prompt or PowerShell as Administrator
+3. Run the installer and follow the prompts
+
+**Unix/Linux/macOS:**
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+#### Building from Source
+
+**All platforms:**
+```bash
+git clone https://github.com/tasleson/duplihere.git
+cd duplihere
+cargo build --release
+```
+
+The executable will be created at:
+- **Windows:** `target\release\duplihere.exe`
+- **Unix/Linux/macOS:** `target/release/duplihere`
 
 ### Status
 

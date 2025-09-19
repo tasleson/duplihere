@@ -3,6 +3,11 @@ name = "duplihere"
 version = "0.9.3"
 authors = ["Tony Asleson <tony.asleson@gmail.com>"]
 edition = "2021"
+description = "Copy & Paste finder for source files or any structured utf-8 text files"
+license = "GPL-3.0-only"
+repository = "https://github.com/tasleson/duplihere"
+keywords = ["duplicate", "copy-paste", "code-analysis", "text-analysis"]
+categories = ["command-line-utilities", "development-tools"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

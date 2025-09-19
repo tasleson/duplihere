@@ -20,6 +20,8 @@ use std::fmt;
 use std::fs::{canonicalize, File};
 use std::hash::{Hash, Hasher};
 use std::io::{prelude::*, BufReader};
+#[cfg(windows)]
+use std::path::MAIN_SEPARATOR;
 use std::process;
 use std::sync::{Arc, Mutex};
 
@@ -84,6 +86,19 @@ impl From<serde_json::Error> for DupliError {
 }
 
 pub type Result<T> = std::result::Result<T, DupliError>;
+
+/// Normalize path separators for cross-platform compatibility
+/// On Windows, this ensures consistent path representation
+fn normalize_path_separators(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', &MAIN_SEPARATOR.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
 
 /// Generates the hash for 'T' which in this case is a utf-8 string.
 pub fn calculate_hash<T: Hash>(t: T) -> u64 {
@@ -647,8 +662,10 @@ pub fn files_to_process(file_globs: &[String]) -> Result<Vec<(u32, Arc<String>)>
 
             match canonicalize(&file_str_name) {
                 Ok(fn_ok) => {
+                    // Normalize path separators for cross-platform compatibility
                     let c_name_str = fn_ok.to_string_lossy();
-                    let name = Arc::new(c_name_str.to_string());
+                    let normalized_path = normalize_path_separators(&c_name_str);
+                    let name = Arc::new(normalized_path);
 
                     if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name)) {
                         files_to_process.push((fid, Arc::clone(&name)));

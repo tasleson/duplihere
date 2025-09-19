@@ -1,6 +1,6 @@
 [package]
 name = "duplihere"
-version = "0.9.3"
+version = "0.10.0"
 authors = ["Tony Asleson <tony.asleson@gmail.com>"]
 edition = "2021"
 description = "Copy & Paste finder for source files or any structured utf-8 text files"

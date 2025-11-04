@@ -261,7 +261,9 @@ fn maximize_collision(
     let mut offset: u32 = 0;
     let l_num = l_h.len();
     let r_num = r_h.len();
-    let mut s = DefaultHasher::new();
+
+    // Multiply-add combining - compiler optimizes 31 to (hash << 5) - hash
+    let mut hash_key: u64 = 0;
 
     loop {
         let l_index: usize = (l_info.line_number + offset) as usize;
@@ -269,7 +271,8 @@ fn maximize_collision(
 
         if l_index < l_num && r_index < r_num {
             if l_h[l_index] == r_h[r_index] {
-                l_h[l_index].hash(&mut s);
+                // hash * 31 + value - fastest for combining pre-hashed values
+                hash_key = hash_key.wrapping_mul(31).wrapping_add(l_h[l_index]);
                 offset += 1;
             } else {
                 break;
@@ -284,11 +287,10 @@ fn maximize_collision(
         return None;
     }
 
-    let files: Vec<LineId> = vec![*l_info, *r_info];
     Some(Collision {
-        key: s.finish(),
+        key: hash_key,
         num_lines: offset,
-        start_lines: files,
+        start_lines: vec![*l_info, *r_info],
         sig: 0,
     })
 }

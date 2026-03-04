@@ -21,9 +21,9 @@ Developers are lazy, they don't change things :-)
 ### How
 
 ```bash
-duplihere - 0.9.0 - find duplicate text
+duplihere - 0.10.0 - find duplicate text
 
-usage: duplihere [-pj -l <number> -i <file name> -t <thread number>] -f <pattern or specific file>
+usage: duplihere [-vpj -l <number> -i <file name> -t <thread number> -x <directory path>] -f <pattern or specific file>
 
 Find duplicate lines of text in one or more text files.
 
@@ -33,12 +33,15 @@ but otherwise needs to be identical.
 More information: https://github.com/tasleson/duplihere
 
 argument:                                        description
+    -v, --version                                print version information [default: false]
     -p, --print                                  print duplicate text [default: false]
     -j, --json                                   output JSON [default: false]
     -l, --lines <number>                         minimum number of duplicate lines [default: 6]
     -f, --file <pattern or specific file>        pattern or file eg. "**/*.[h|c]" recursive, "*.py", "file.ext", can repeat [required]
     -i, --ignore <file name>                     file containing hash values to ignore, one per line
     -t, --threads <thread number>                number of threads to utilize. Set to 0 to match #cpu cores [default: 4]
+    -x, --exclude-dir <directory path>           directory to exclude (repeatable). Path must be relative to the start directory
+
 ```
 
 An example where we re-curse in a directory for python files and a directory

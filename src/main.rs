@@ -658,6 +658,7 @@ pub struct Options {
     ignore: String,
     threads: usize,
     exclude_dirs: Vec<String>,
+    version: bool,
 }
 
 /// Default values for the command line options.
@@ -671,6 +672,7 @@ impl Default for Options {
             ignore: "".to_string(),
             threads: 4,
             exclude_dirs: vec![],
+            version: false,
         }
     }
 }
@@ -682,13 +684,34 @@ but otherwise needs to be identical.
 
 More information: https://github.com/tasleson/duplihere";
 
+/// Print version information including git metadata
+fn print_version() {
+    println!("duplihere {}", env!("CARGO_PKG_VERSION"));
+    println!("  Git SHA:    {}", env!("VERGEN_GIT_SHA"));
+    println!("  Git Branch: {}", env!("VERGEN_GIT_BRANCH"));
+    println!("  Git Dirty:  {}", env!("VERGEN_GIT_DIRTY"));
+}
+
 fn main() -> Result<(), rags::Error> {
+    // Check for version flag early, before parser validation
+    if std::env::args().any(|arg| arg == "--version" || arg == "-v") {
+        print_version();
+        return Ok(());
+    }
+
     let mut opts = Options::default();
     let mut parser = argparse!();
     parser
         .app_desc("find duplicate text")
         .app_long_desc(LONG_DESC)
         .group("argument", "description")?
+        .flag(
+            'v',
+            "version",
+            "print version information",
+            &mut opts.version,
+            false,
+        )?
         .flag('p', "print", "print duplicate text", &mut opts.print, false)?
         .flag('j', "json", "output JSON", &mut opts.json, false)?
         .arg(
@@ -736,6 +759,8 @@ fn main() -> Result<(), rags::Error> {
 
     if parser.wants_help() {
         parser.print_help();
+    } else if opts.version {
+        print_version();
     } else {
         let results_hash: DashMap<u64, Collision>;
         let mut ignore_hash: HashMap<u64, bool> = HashMap::new();

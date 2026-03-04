@@ -1,6 +1,6 @@
 [package]
 name = "duplihere"
-version = "0.9.3"
+version = "0.10.0"
 authors = ["Tony Asleson <tony.asleson@gmail.com>"]
 edition = "2018"
 
@@ -15,3 +15,6 @@ serde_json = { version = "1.0"}
 lazy_static = "1.4.0"
 rayon = "1.3.0"
 dashmap = { version = "5.5.0", features = ["raw-api"] }
+
+[build-dependencies]
+vergen-gix = { version = "9" }

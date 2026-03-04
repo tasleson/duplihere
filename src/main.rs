@@ -576,10 +576,25 @@ impl FileId {
 }
 
 /// Get all files matching `file_globs` and update the global `FILE_LOOKUP`
-fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
+fn files_to_process(file_globs: &[String], exclude_dirs: &[String]) -> Vec<(u32, Arc<String>)> {
     let mut files_to_process = Vec::new();
     // Hold the lock on FILE_LOOKUP for the duration as we are single threaded here.
     let mut file_lookup_locked = FILE_LOOKUP.lock().unwrap();
+
+    // Canonicalize all excluded directories
+    let excluded_paths: Vec<std::path::PathBuf> = exclude_dirs
+        .iter()
+        .filter_map(|dir| match canonicalize(dir) {
+            Ok(path) => Some(path),
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Unable to canonicalize excluded directory {}, reason: {}",
+                    dir, e
+                );
+                None
+            }
+        })
+        .collect();
 
     for g in file_globs {
         let entries = match glob(g) {
@@ -604,6 +619,15 @@ fn files_to_process(file_globs: &[String]) -> Vec<(u32, Arc<String>)> {
 
             match canonicalize(file_str_name) {
                 Ok(fn_ok) => {
+                    // Check if file is in any excluded directory
+                    let is_excluded = excluded_paths
+                        .iter()
+                        .any(|excluded_path| fn_ok.starts_with(excluded_path));
+
+                    if is_excluded {
+                        continue;
+                    }
+
                     let c_name_str = fn_ok.to_str().unwrap();
                     let name = Arc::new(c_name_str.to_string());
 
@@ -633,6 +657,7 @@ pub struct Options {
     file_globs: Vec<String>,
     ignore: String,
     threads: usize,
+    exclude_dirs: Vec<String>,
 }
 
 /// Default values for the command line options.
@@ -645,6 +670,7 @@ impl Default for Options {
             file_globs: vec![],
             ignore: "".to_string(),
             threads: 4,
+            exclude_dirs: vec![],
         }
     }
 }
@@ -698,6 +724,14 @@ fn main() -> Result<(), rags::Error> {
             Some("<thread number>"),
             false,
         )?
+        .list(
+            'x',
+            "exclude-dir",
+            "directory to exclude (repeatable). Path must be relative to the start directory",
+            &mut opts.exclude_dirs,
+            Some("<directory path>"),
+            false,
+        )?
         .done()?;
 
     if parser.wants_help() {
@@ -719,7 +753,8 @@ fn main() -> Result<(), rags::Error> {
                 ignore_hash = get_ignore_hashes(&opts.ignore);
             }
 
-            let files_to_process: Vec<(u32, Arc<String>)> = files_to_process(&opts.file_globs);
+            let files_to_process: Vec<(u32, Arc<String>)> =
+                files_to_process(&opts.file_globs, &opts.exclude_dirs);
 
             let collision_hashes: DashMap<u64, Vec<LineId>> = DashMap::new();
             let file_hashes: Mutex<Vec<Vec<u64>>> =

@@ -693,6 +693,14 @@ fn print_version() {
 }
 
 fn main() -> Result<(), rags::Error> {
+    // Reset SIGPIPE to default Unix behavior to avoid panic when output is piped
+    // to programs like `less` that exit early. This is the standard approach used
+    // by CLI tools like ripgrep, fd, etc. See: https://github.com/rust-lang/rust/issues/46016
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     // Check for version flag early, before parser validation
     if std::env::args().any(|arg| arg == "--version" || arg == "-v") {
         print_version();

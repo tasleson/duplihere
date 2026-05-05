@@ -329,7 +329,6 @@ fn print_report(
 ) {
     let mut num_lines: u64 = 0;
     let mut ignored: u64 = 0;
-    let file_lookup_locked = FILE_LOOKUP.lock().unwrap();
 
     for p in printable_results.iter() {
         if ignore_hashes.contains_key(&p.key) {
@@ -338,6 +337,7 @@ fn print_report(
             num_lines += (p.num_lines as usize * (p.start_lines.len() - 1)) as u64;
 
             if !opts.json {
+                let file_lookup_locked = FILE_LOOKUP.lock().unwrap();
                 println!(
                     "{}\nHash signature = {}\nFound {} copy & pasted lines in the following files:",
                     "*".repeat(80),
@@ -369,6 +369,7 @@ fn print_report(
     }
 
     if !opts.json {
+        let file_lookup_locked = FILE_LOOKUP.lock().unwrap();
         println!(
             "Found {} duplicate lines in {} chunks in {} files, {} chunks ignored.\n\
             https://github.com/tasleson/duplihere",

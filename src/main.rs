@@ -279,6 +279,13 @@ fn maximize_collision(
         }
     }
 
+    // A bucket collision in the rolling hash lands us here with text that doesn't actually match,
+    // so we can walk fewer than min_lines.  Nothing downstream re-checks the length, so drop it
+    // here rather than reporting a duplicate shorter than the user asked for.
+    if offset < min_lines {
+        return None;
+    }
+
     // If after walking we overlap skip too
     if overlap(l_info, r_info, offset) {
         return None;
@@ -813,3 +820,6 @@ fn main() -> Result<(), rags::Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

@@ -3,9 +3,22 @@
 // Copyright (C) 2019-2023 Tony Asleson <tony.asleson@gmail.com>
 
 //! Unit tests for the duplicate detection internals.
+//!
+//! The tests are split by area: [`hashing`] covers turning files into hash signatures,
+//! [`collision`] covers finding and cleaning up duplicate regions and [`files`] covers file
+//! name bookkeeping and option handling.
+//!
+//! Note that `FILE_LOOKUP` is process global and the tests run in parallel, so any test that
+//! touches it must use unique file names and only use the ids handed back to it.
 
-use super::*;
+use crate::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+mod collision;
+mod files;
+mod hashing;
+
+/// Minimum duplicate length used by most tests, small enough to keep the fixtures readable.
 const MIN_LINES: u32 = 3;
 
 /// Line signatures for three "files".  Files 0 and 1 share a two line prefix only, which is
@@ -14,60 +27,65 @@ fn test_file_hashes() -> Vec<Vec<u64>> {
     vec![vec![1, 2, 10, 11], vec![1, 2, 20, 21], vec![1, 2, 10, 11]]
 }
 
+/// The start of `file_id`, the position most collision tests care about.
 fn line(file_id: u32) -> LineId {
+    line_at(file_id, 0)
+}
+
+/// A specific line within `file_id`.
+fn line_at(file_id: u32, line_number: u32) -> LineId {
     LineId {
         file_id,
-        line_number: 0,
+        line_number,
     }
 }
 
-/// A rolling hash bucket collision hands maximize_collision two line ranges that don't really
-/// match, or match for fewer lines than requested.  Ensure we only report at least min_lines.
-#[test]
-fn maximize_collision_honors_min_lines() {
-    let file_hashes = test_file_hashes();
+/// A file name no other test (or run) uses, so that registering it in the global `FILE_LOOKUP`
+/// always yields a fresh id.
+fn unique_name(tag: &str) -> Arc<String> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    Arc::new(format!(
+        "/duplihere-test/{}-{}-{}",
+        tag,
+        process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ))
+}
 
-    let cases: [(u32, u32, Option<u32>); 3] = [
-        // Only two matching lines, fewer than min_lines, nothing to report.
-        (0, 1, None),
-        // Fully matching files, report all four lines.
-        (0, 2, Some(4)),
-        // Same file, overlapping with itself.
-        (0, 0, None),
-    ];
+/// Register a brand new name in the global `FILE_LOOKUP`, returning its id and name.  The lock
+/// is released before returning so callers can safely take it again.
+fn register_unique_file(tag: &str) -> (u32, Arc<String>) {
+    let name = unique_name(tag);
+    let id = FILE_LOOKUP
+        .lock()
+        .unwrap()
+        .register_file(Arc::clone(&name))
+        .expect("unique file name should not already be registered");
+    (id, name)
+}
 
-    for (left, right, expected) in cases {
-        let result = maximize_collision(&file_hashes, &line(left), &line(right), MIN_LINES);
-        assert_eq!(
-            result.map(|c| c.num_lines),
-            expected,
-            "unexpected result for files {} and {}",
-            left,
-            right
-        );
+/// Build a `Collision` the way `maximize_collision` does, i.e. with an unset signature.
+fn collision(key: u64, num_lines: u32, start_lines: Vec<LineId>) -> Collision {
+    Collision {
+        key,
+        num_lines,
+        start_lines,
+        sig: 0,
     }
 }
 
-/// walk_collision is handed the contents of one rolling hash bucket.  Two entries land in the
-/// same bucket when their digests match, which normally means the text matches, but can also
-/// happen by chance.  Nothing between here and the printed report re-checks the length of a
-/// match, so a bucket holding text that doesn't really match must produce no result at all.
-#[test]
-fn walk_collision_drops_short_bucket_collisions() {
-    let file_hashes = test_file_hashes();
+/// Write `contents` to `name` inside `dir`, creating parent directories as needed, and return
+/// the path it was written to.
+fn write_file(dir: &std::path::Path, name: &str, contents: &[u8]) -> std::path::PathBuf {
+    let path = dir.join(name);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(&path, contents).unwrap();
+    path
+}
 
-    // Files 0 and 1 only match for two lines, fewer than MIN_LINES: report nothing.
-    let short = DashMap::new();
-    walk_collision(&[line(0), line(1)], &file_hashes, MIN_LINES, &short);
-    assert!(
-        short.is_empty(),
-        "reported a duplicate shorter than min_lines: {:?}",
-        short.iter().map(|e| e.num_lines).collect::<Vec<_>>()
-    );
-
-    // Control: files 0 and 2 are identical, so the real duplicate is still reported in full.
-    let genuine = DashMap::new();
-    walk_collision(&[line(0), line(2)], &file_hashes, MIN_LINES, &genuine);
-    let reported: Vec<u32> = genuine.iter().map(|e| e.num_lines).collect();
-    assert_eq!(reported, vec![4]);
+/// `&str` view of a path, for the APIs that take file names as strings.
+fn path_str(path: &std::path::Path) -> &str {
+    path.to_str().unwrap()
 }

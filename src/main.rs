@@ -279,6 +279,13 @@ fn maximize_collision(
         }
     }
 
+    // A bucket collision in the rolling hash lands us here with text that doesn't actually match,
+    // so we can walk fewer than min_lines.  Nothing downstream re-checks the length, so drop it
+    // here rather than reporting a duplicate shorter than the user asked for.
+    if offset < min_lines {
+        return None;
+    }
+
     // If after walking we overlap skip too
     if overlap(l_info, r_info, offset) {
         return None;
@@ -295,8 +302,16 @@ fn maximize_collision(
 
 /// Given a file name, a start line number, and number of lines, dump the text into the output.
 fn print_dup_text(filename: &str, start_line: usize, count: usize) {
-    let file = File::open(filename)
-        .unwrap_or_else(|_| panic!("Unable to open file we have already opened {:?}", filename));
+    let file = match File::open(filename) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!(
+                "ERROR: Unable to re-open file {} for printing (deleted during processing?): {}",
+                filename, e
+            );
+            return;
+        }
+    };
     let mut reader = BufReader::new(file);
     let mut line_number = 0;
     let end = start_line + count;
@@ -494,7 +509,19 @@ fn get_ignore_hashes(file_name: &str) -> HashMap<u64, bool> {
             let buf = BufReader::new(fh);
 
             for line in buf.lines() {
-                let t = line.unwrap();
+                // The user explicitly asked for this file, so quietly dropping
+                // the ignores it should have contained would silently change the
+                // report.  Fail the same way we do when it won't open at all.
+                let t = match line {
+                    Ok(line_content) => line_content,
+                    Err(e) => {
+                        eprintln!(
+                            "Unable to read supplied ignore file {}, reason: {}",
+                            file_name, e
+                        );
+                        process::exit(2);
+                    }
+                };
                 let l = t.trim();
 
                 if !l.is_empty() && !l.starts_with('#') {
@@ -616,9 +643,9 @@ fn files_to_process(file_globs: &[String], exclude_dirs: &[String]) -> Vec<(u32,
             if !specific_file.is_file() {
                 continue;
             }
-            let file_str_name = specific_file.to_str().unwrap();
+            let file_str_name = specific_file.to_string_lossy().to_string();
 
-            match canonicalize(file_str_name) {
+            match canonicalize(&file_str_name) {
                 Ok(fn_ok) => {
                     // Check if file is in any excluded directory
                     let is_excluded = excluded_paths
@@ -629,7 +656,19 @@ fn files_to_process(file_globs: &[String], exclude_dirs: &[String]) -> Vec<(u32,
                         continue;
                     }
 
-                    let c_name_str = fn_ok.to_str().unwrap();
+                    // Every name we keep has to survive a round trip back through
+                    // File::open() when we print the duplicate text, so a lossy
+                    // conversion would only move the failure further downstream.
+                    let c_name_str = match fn_ok.to_str() {
+                        Some(c_name_str) => c_name_str,
+                        None => {
+                            eprintln!(
+                                "WARNING: Skipping file {}, canonical path {:?} is not valid UTF-8",
+                                file_str_name, fn_ok
+                            );
+                            continue;
+                        }
+                    };
                     let name = Arc::new(c_name_str.to_string());
 
                     if let Some(fid) = file_lookup_locked.register_file(Arc::clone(&name)) {
@@ -813,3 +852,6 @@ fn main() -> Result<(), rags::Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

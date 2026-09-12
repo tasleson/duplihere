@@ -84,6 +84,29 @@ fn files_to_process_filters_excluded_directories() {
     assert_eq!(sorted_names(&found), vec![canonical(&keep)]);
 }
 
+/// A symlink with a perfectly good name can still canonicalize into a directory whose name
+/// isn't UTF-8.  We can't carry such a name as a `String`, so the file is skipped rather than
+/// handed on as a lossy name we'd fail to re-open later.
+#[cfg(unix)]
+#[test]
+fn files_to_process_skips_names_that_are_not_utf8() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempdir().unwrap();
+    let keep = write_file(dir.path(), "keep.txt", b"a\n");
+
+    let odd_dir = dir.path().join(OsStr::from_bytes(b"odd\xff\xfe"));
+    std::fs::create_dir(&odd_dir).unwrap();
+    std::fs::write(odd_dir.join("target.txt"), b"a\n").unwrap();
+    std::os::unix::fs::symlink(odd_dir.join("target.txt"), dir.path().join("link.txt")).unwrap();
+
+    let globs = vec![format!("{}/*.txt", path_str(dir.path()))];
+    let found = files_to_process(&globs, &[]);
+
+    assert_eq!(sorted_names(&found), vec![canonical(&keep)]);
+}
+
 /// Blank lines, `#` comments and anything that isn't a u64 are skipped; everything else is
 /// available to suppress a result.  (Only the invalid value warns, but stderr isn't captured.)
 #[test]
